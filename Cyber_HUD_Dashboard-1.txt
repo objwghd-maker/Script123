@@ -1,0 +1,1094 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
+local Stats = game:GetService("Stats")
+local Debris = game:GetService("Debris")
+
+local LocalPlayer = Players.LocalPlayer
+
+local Themes = {
+    Violet = {
+        Background = Color3.fromRGB(24, 25, 32),
+        Panel = Color3.fromRGB(30, 32, 41),
+        Sidebar = Color3.fromRGB(20, 21, 27),
+        Accent = Color3.fromRGB(120, 130, 245),
+        AccentAlt = Color3.fromRGB(80, 220, 240),
+        TextPrimary = Color3.fromRGB(235, 235, 240),
+        TextMuted = Color3.fromRGB(150, 152, 165),
+        Good = Color3.fromRGB(90, 240, 150),
+        Warn = Color3.fromRGB(255, 190, 90),
+        Bad = Color3.fromRGB(255, 95, 95),
+    },
+    Emerald = {
+        Background = Color3.fromRGB(18, 26, 24),
+        Panel = Color3.fromRGB(24, 34, 31),
+        Sidebar = Color3.fromRGB(15, 22, 20),
+        Accent = Color3.fromRGB(80, 220, 160),
+        AccentAlt = Color3.fromRGB(120, 245, 200),
+        TextPrimary = Color3.fromRGB(230, 240, 235),
+        TextMuted = Color3.fromRGB(140, 165, 155),
+        Good = Color3.fromRGB(90, 240, 150),
+        Warn = Color3.fromRGB(255, 190, 90),
+        Bad = Color3.fromRGB(255, 95, 95),
+    },
+    Sunset = {
+        Background = Color3.fromRGB(30, 22, 22),
+        Panel = Color3.fromRGB(38, 28, 28),
+        Sidebar = Color3.fromRGB(24, 17, 17),
+        Accent = Color3.fromRGB(245, 140, 90),
+        AccentAlt = Color3.fromRGB(245, 100, 130),
+        TextPrimary = Color3.fromRGB(245, 235, 230),
+        TextMuted = Color3.fromRGB(175, 150, 145),
+        Good = Color3.fromRGB(120, 230, 150),
+        Warn = Color3.fromRGB(255, 190, 90),
+        Bad = Color3.fromRGB(255, 95, 95),
+    },
+}
+
+local State = {
+    ThemeName = "Violet",
+    ShowFps = true,
+    SoundEnabled = true,
+    CompactMode = false,
+    ReduceMotion = false,
+    Visible = true,
+    Minimized = false,
+    SessionStart = os.clock(),
+}
+
+local Registry = {
+    ThemedBackground = {},
+    ThemedPanel = {},
+    ThemedSidebar = {},
+    ThemedMutedText = {},
+    ThemedPrimaryText = {},
+    ThemedAccentText = {},
+}
+
+local function register(bucket, inst, prop)
+    table.insert(Registry[bucket], {inst, prop})
+end
+
+local function corner(inst, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = inst
+    return c
+end
+
+local function stroke(inst, color, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Color = color
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0.5
+    s.Parent = inst
+    return s
+end
+
+local function tween(inst, props, time, style, direction)
+    local t = TweenService:Create(inst, TweenInfo.new(time or 0.22, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), props)
+    t:Play()
+    return t
+end
+
+local UiClickSoundId = "rbxassetid://6042053626"
+local UiHoverSoundId = "rbxassetid://6042053680"
+local UiSwooshSoundId = "rbxassetid://6042053693"
+
+local function playSound(id, volume)
+    if not State.SoundEnabled then return end
+    local ok, snd = pcall(function()
+        local s = Instance.new("Sound")
+        s.SoundId = id
+        s.Volume = volume or 0.4
+        s.Parent = SoundService
+        return s
+    end)
+    if ok and snd then
+        snd:Play()
+        Debris:AddItem(snd, 2)
+    end
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "UserDashboardUI"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 10
+ScreenGui.IgnoreGuiInset = true
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.Position = UDim2.new(0.5, -260, 0.5, -190)
+MainFrame.Size = UDim2.new(0, 520, 0, 380)
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+corner(MainFrame, 14)
+register("ThemedBackground", MainFrame, "BackgroundColor3")
+
+local GlowStroke = stroke(MainFrame, Color3.fromRGB(120, 130, 245), 2, 0.2)
+local GlowGradient = Instance.new("UIGradient")
+GlowGradient.Parent = GlowStroke
+GlowGradient.Rotation = 0
+task.spawn(function()
+    while ScreenGui.Parent do
+        if not State.ReduceMotion then
+            local tw = tween(GlowGradient, {Rotation = 360}, 4, Enum.EasingStyle.Linear)
+            tw.Completed:Wait()
+            GlowGradient.Rotation = 0
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+local ParticleLayer = Instance.new("Frame")
+ParticleLayer.Name = "ParticleLayer"
+ParticleLayer.Parent = MainFrame
+ParticleLayer.BackgroundTransparency = 1
+ParticleLayer.Size = UDim2.new(1, 0, 1, 0)
+ParticleLayer.ZIndex = 0
+
+for i = 1, 14 do
+    local dot = Instance.new("Frame")
+    dot.Parent = ParticleLayer
+    dot.Size = UDim2.new(0, 3, 0, 3)
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.BackgroundTransparency = 0.75
+    dot.ZIndex = 0
+    corner(dot, 2)
+    dot.Position = UDim2.new(math.random(), 0, 1 + math.random(), 0)
+    task.spawn(function()
+        while ScreenGui.Parent do
+            if State.ReduceMotion then
+                task.wait(1)
+            else
+                local startY = 1 + math.random() * 0.5
+                dot.Position = UDim2.new(math.random(), 0, startY, 0)
+                local duration = 4 + math.random() * 4
+                local tw = tween(dot, {Position = UDim2.new(dot.Position.X.Scale, 0, -0.1, 0)}, duration, Enum.EasingStyle.Linear)
+                tw.Completed:Wait()
+            end
+        end
+    end)
+end
+
+local AccentBar = Instance.new("Frame")
+AccentBar.Name = "AccentBar"
+AccentBar.Parent = MainFrame
+AccentBar.BorderSizePixel = 0
+AccentBar.Size = UDim2.new(1, 0, 0, 3)
+register("ThemedAccentText", AccentBar, "BackgroundColor3")
+local AccentGradient = Instance.new("UIGradient")
+AccentGradient.Parent = AccentBar
+
+local TopBar = Instance.new("Frame")
+TopBar.Name = "TopBar"
+TopBar.Parent = MainFrame
+TopBar.BackgroundTransparency = 1
+TopBar.Position = UDim2.new(0, 0, 0, 3)
+TopBar.Size = UDim2.new(1, 0, 0, 40)
+
+local Title = Instance.new("TextLabel")
+Title.Parent = TopBar
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 16, 0, 0)
+Title.Size = UDim2.new(0.5, 0, 1, 0)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "Cyber HUD"
+Title.TextSize = 17
+Title.TextXAlignment = Enum.TextXAlignment.Left
+register("ThemedPrimaryText", Title, "TextColor3")
+
+local StatusDot = Instance.new("Frame")
+StatusDot.Parent = TopBar
+StatusDot.Size = UDim2.new(0, 8, 0, 8)
+StatusDot.Position = UDim2.new(0, 92, 0.5, -4)
+StatusDot.BackgroundColor3 = Color3.fromRGB(90, 240, 150)
+corner(StatusDot, 4)
+
+local function makeTopButton(text, xOffset, color)
+    local b = Instance.new("TextButton")
+    b.Parent = TopBar
+    b.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    b.BackgroundTransparency = 1
+    b.Position = UDim2.new(1, xOffset, 0, 4)
+    b.Size = UDim2.new(0, 30, 0, 30)
+    b.Font = Enum.Font.GothamBold
+    b.Text = text
+    b.TextColor3 = color
+    b.TextSize = 16
+    corner(b, 6)
+    b.MouseEnter:Connect(function()
+        tween(b, {BackgroundTransparency = 0.85}, 0.15)
+        playSound(UiHoverSoundId, 0.15)
+    end)
+    b.MouseLeave:Connect(function()
+        tween(b, {BackgroundTransparency = 1}, 0.15)
+    end)
+    return b
+end
+
+local MinimizeButton = makeTopButton("-", -66, Color3.fromRGB(150, 152, 165))
+local CloseButton = makeTopButton("X", -34, Color3.fromRGB(255, 95, 95))
+
+local Sidebar = Instance.new("Frame")
+Sidebar.Name = "Sidebar"
+Sidebar.Parent = MainFrame
+Sidebar.Position = UDim2.new(0, 0, 0, 46)
+Sidebar.Size = UDim2.new(0, 132, 1, -46)
+register("ThemedSidebar", Sidebar, "BackgroundColor3")
+
+local SidebarLayout = Instance.new("UIListLayout")
+SidebarLayout.Parent = Sidebar
+SidebarLayout.Padding = UDim.new(0, 3)
+SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local SidebarPad = Instance.new("UIPadding")
+SidebarPad.PaddingTop = UDim.new(0, 10)
+SidebarPad.PaddingLeft = UDim.new(0, 8)
+SidebarPad.PaddingRight = UDim.new(0, 8)
+SidebarPad.Parent = Sidebar
+
+local tabDefs = {
+    {name = "Overview", icon = "โ—"},
+    {name = "Server", icon = "โ—"},
+    {name = "Memory", icon = "โ–ค"},
+    {name = "Players", icon = "โฐ"},
+    {name = "Logs", icon = "โ–ง"},
+    {name = "Settings", icon = "โ"},
+    {name = "About", icon = "โน"},
+}
+
+local tabButtons = {}
+for i, def in ipairs(tabDefs) do
+    local btn = Instance.new("TextButton")
+    btn.Name = def.name
+    btn.LayoutOrder = i
+    btn.Parent = Sidebar
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.new(1, 0, 0, 30)
+    btn.Font = Enum.Font.GothamMedium
+    btn.Text = "  " .. def.icon .. "   " .. def.name
+    btn.TextSize = 12
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.AutoButtonColor = false
+    register("ThemedMutedText", btn, "TextColor3")
+    corner(btn, 6)
+
+    local indicator = Instance.new("Frame")
+    indicator.Name = "Indicator"
+    indicator.Parent = btn
+    indicator.Size = UDim2.new(0, 3, 0.6, 0)
+    indicator.Position = UDim2.new(0, 0, 0.2, 0)
+    indicator.BackgroundTransparency = 1
+    register("ThemedAccentText", indicator, "BackgroundColor3")
+    corner(indicator, 2)
+
+    tabButtons[def.name] = btn
+end
+
+local Content = Instance.new("Frame")
+Content.Name = "Content"
+Content.Parent = MainFrame
+Content.BackgroundTransparency = 1
+Content.Position = UDim2.new(0, 142, 0, 56)
+Content.Size = UDim2.new(1, -158, 1, -66)
+
+local pageFrames = {}
+
+local function newPage(name, scrollable)
+    local f
+    if scrollable then
+        f = Instance.new("ScrollingFrame")
+        f.ScrollBarThickness = 4
+        f.CanvasSize = UDim2.new(0, 0, 0, 0)
+        f.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    else
+        f = Instance.new("Frame")
+    end
+    f.Name = name .. "Page"
+    f.Parent = Content
+    f.BackgroundTransparency = 1
+    f.Size = UDim2.new(1, 0, 1, 0)
+    f.Visible = false
+    pageFrames[name] = f
+    return f
+end
+
+local function addListLayout(parent, padding)
+    local l = Instance.new("UIListLayout")
+    l.Padding = UDim.new(0, padding or 8)
+    l.SortOrder = Enum.SortOrder.LayoutOrder
+    l.Parent = parent
+    return l
+end
+
+local function statRow(parent, order, label, value, color)
+    local row = Instance.new("Frame")
+    row.Parent = parent
+    row.LayoutOrder = order
+    row.Size = UDim2.new(1, 0, 0, 40)
+    register("ThemedPanel", row, "BackgroundColor3")
+    corner(row, 8)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.Size = UDim2.new(0.55, 0, 1, 0)
+    lbl.Font = Enum.Font.Gotham
+    lbl.Text = label
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedMutedText", lbl, "TextColor3")
+
+    local val = Instance.new("TextLabel")
+    val.Name = "Value"
+    val.Parent = row
+    val.BackgroundTransparency = 1
+    val.Position = UDim2.new(0.5, 0, 0, 0)
+    val.Size = UDim2.new(0.45, -12, 1, 0)
+    val.Font = Enum.Font.GothamBold
+    val.Text = value
+    val.TextColor3 = color or Themes[State.ThemeName].TextPrimary
+    val.TextSize = 13
+    val.TextXAlignment = Enum.TextXAlignment.Right
+    if not color then
+        register("ThemedPrimaryText", val, "TextColor3")
+    end
+
+    return val
+end
+
+local function makeBarGraph(parent, sampleCount, height)
+    local holder = Instance.new("Frame")
+    holder.Parent = parent
+    holder.Size = UDim2.new(1, 0, 0, height)
+    register("ThemedPanel", holder, "BackgroundColor3")
+    corner(holder, 8)
+
+    local barsHolder = Instance.new("Frame")
+    barsHolder.Parent = holder
+    barsHolder.BackgroundTransparency = 1
+    barsHolder.Position = UDim2.new(0, 6, 0, 6)
+    barsHolder.Size = UDim2.new(1, -12, 1, -12)
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    layout.Padding = UDim.new(0, 2)
+    layout.Parent = barsHolder
+
+    local bars = {}
+    for i = 1, sampleCount do
+        local bar = Instance.new("Frame")
+        bar.LayoutOrder = i
+        bar.Parent = barsHolder
+        bar.AnchorPoint = Vector2.new(0, 1)
+        bar.Position = UDim2.new(0, 0, 1, 0)
+        bar.Size = UDim2.new(0, math.floor(300 / sampleCount), 0, 2)
+        register("ThemedAccentText", bar, "BackgroundColor3")
+        corner(bar, 2)
+        bars[i] = bar
+    end
+
+    return holder, bars
+end
+
+local function updateBarGraph(bars, values, maxValue)
+    for i, bar in ipairs(bars) do
+        local v = values[i] or 0
+        local pct = maxValue > 0 and math.clamp(v / maxValue, 0.02, 1) or 0.02
+        bar.Size = UDim2.new(0, bar.Size.X.Offset, pct, 0)
+    end
+end
+
+local OverviewPage = newPage("Overview")
+addListLayout(OverviewPage, 8)
+
+local HealthValue = statRow(OverviewPage, 1, "Health", "-- / --", Themes[State.ThemeName].Good)
+local SpeedValue = statRow(OverviewPage, 2, "Walk Speed", "--")
+local JumpValue = statRow(OverviewPage, 3, "Jump Power", "--")
+local GravityValue = statRow(OverviewPage, 4, "Gravity", "--")
+local VelocityValue = statRow(OverviewPage, 5, "Velocity", "--")
+local StateValue = statRow(OverviewPage, 6, "Humanoid State", "--")
+local FpsValue = statRow(OverviewPage, 7, "FPS", "--")
+local FpsRow = FpsValue.Parent
+
+local FrameTimeLabel = Instance.new("TextLabel")
+FrameTimeLabel.Parent = OverviewPage
+FrameTimeLabel.LayoutOrder = 8
+FrameTimeLabel.BackgroundTransparency = 1
+FrameTimeLabel.Size = UDim2.new(1, 0, 0, 16)
+FrameTimeLabel.Font = Enum.Font.Gotham
+FrameTimeLabel.Text = "Frame-Time History"
+FrameTimeLabel.TextSize = 11
+FrameTimeLabel.TextXAlignment = Enum.TextXAlignment.Left
+register("ThemedMutedText", FrameTimeLabel, "TextColor3")
+
+local FrameTimeGraphHolder, FrameTimeBars = makeBarGraph(OverviewPage, 40, 60)
+FrameTimeGraphHolder.LayoutOrder = 9
+local frameTimeSamples = table.create(40, 0)
+
+local ServerPage = newPage("Server")
+addListLayout(ServerPage, 8)
+local PingValue = statRow(ServerPage, 1, "Ping", "-- ms", Themes[State.ThemeName].Good)
+local ConnectionQualityValue = statRow(ServerPage, 2, "Connection Quality", "--")
+local PlayerCountValue = statRow(ServerPage, 3, "Players", "-- / --")
+local AvgAccountAgeValue = statRow(ServerPage, 4, "Avg Account Age", "-- days")
+local SessionUptimeValue = statRow(ServerPage, 5, "Session Uptime", "0s")
+statRow(ServerPage, 6, "Place Id", tostring(game.PlaceId))
+statRow(ServerPage, 7, "Job Id", game.JobId ~= "" and game.JobId or "Studio")
+
+local PingGraphLabel = Instance.new("TextLabel")
+PingGraphLabel.Parent = ServerPage
+PingGraphLabel.LayoutOrder = 8
+PingGraphLabel.BackgroundTransparency = 1
+PingGraphLabel.Size = UDim2.new(1, 0, 0, 16)
+PingGraphLabel.Font = Enum.Font.Gotham
+PingGraphLabel.Text = "Latency History"
+PingGraphLabel.TextSize = 11
+PingGraphLabel.TextXAlignment = Enum.TextXAlignment.Left
+register("ThemedMutedText", PingGraphLabel, "TextColor3")
+
+local PingGraphHolder, PingBars = makeBarGraph(ServerPage, 40, 60)
+PingGraphHolder.LayoutOrder = 9
+local pingSamples = table.create(40, 0)
+
+local MemoryPage = newPage("Memory", true)
+addListLayout(MemoryPage, 6)
+
+local memoryTags = {
+    {label = "Total", tag = nil},
+    {label = "Lua Heap", tag = Enum.DeveloperMemoryTag.LuaHeap},
+    {label = "Instances", tag = Enum.DeveloperMemoryTag.Instances},
+    {label = "Signals", tag = Enum.DeveloperMemoryTag.Signals},
+    {label = "Physics Collision", tag = Enum.DeveloperMemoryTag.PhysicsCollision},
+    {label = "Physics Parts", tag = Enum.DeveloperMemoryTag.PhysicsParts},
+    {label = "Graphics Textures", tag = Enum.DeveloperMemoryTag.GraphicsTexture},
+    {label = "Graphics Meshes", tag = Enum.DeveloperMemoryTag.GraphicsMeshParts},
+    {label = "Graphics Solid Models", tag = Enum.DeveloperMemoryTag.GraphicsSolidModels},
+    {label = "Sounds", tag = Enum.DeveloperMemoryTag.Sounds},
+    {label = "Terrain Voxels", tag = Enum.DeveloperMemoryTag.TerrainVoxels},
+    {label = "Script", tag = Enum.DeveloperMemoryTag.Script},
+    {label = "GUI", tag = Enum.DeveloperMemoryTag.Gui},
+    {label = "Animation", tag = Enum.DeveloperMemoryTag.Animation},
+}
+
+local memoryRows = {}
+for i, def in ipairs(memoryTags) do
+    memoryRows[def.label] = statRow(MemoryPage, i, def.label, "-- MB")
+end
+
+local PlayersPage = newPage("Players", true)
+addListLayout(PlayersPage, 6)
+local playerRows = {}
+
+local function buildPlayerRow(plr)
+    local row = Instance.new("Frame")
+    row.Name = plr.Name
+    row.Size = UDim2.new(1, 0, 0, 40)
+    row.LayoutOrder = plr.UserId
+    row.Parent = PlayersPage
+    register("ThemedPanel", row, "BackgroundColor3")
+    corner(row, 8)
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Parent = row
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Position = UDim2.new(0, 12, 0, 0)
+    nameLbl.Size = UDim2.new(0.5, 0, 1, 0)
+    nameLbl.Font = Enum.Font.GothamMedium
+    nameLbl.Text = plr.Name .. (plr == LocalPlayer and " (you)" or "")
+    nameLbl.TextSize = 12
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", nameLbl, "TextColor3")
+
+    local infoLbl = Instance.new("TextLabel")
+    infoLbl.Parent = row
+    infoLbl.BackgroundTransparency = 1
+    infoLbl.Position = UDim2.new(0.5, 0, 0, 0)
+    infoLbl.Size = UDim2.new(0.5, -12, 1, 0)
+    infoLbl.Font = Enum.Font.Gotham
+    infoLbl.Text = (plr.Team and plr.Team.Name or "No Team") .. " ยท " .. plr.AccountAge .. "d"
+    infoLbl.TextSize = 11
+    infoLbl.TextXAlignment = Enum.TextXAlignment.Right
+    register("ThemedMutedText", infoLbl, "TextColor3")
+
+    playerRows[plr] = row
+end
+
+local function removePlayerRow(plr)
+    local row = playerRows[plr]
+    if row then
+        row:Destroy()
+        playerRows[plr] = nil
+    end
+end
+
+local LogsPage = newPage("Logs", true)
+local logLayout = addListLayout(LogsPage, 4)
+logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+local logEntries = {}
+local logCounter = 0
+
+local function pushLog(text)
+    logCounter += 1
+    local row = Instance.new("Frame")
+    row.LayoutOrder = -logCounter
+    row.Parent = LogsPage
+    row.Size = UDim2.new(1, 0, 0, 30)
+    register("ThemedPanel", row, "BackgroundColor3")
+    corner(row, 6)
+
+    local timeLbl = Instance.new("TextLabel")
+    timeLbl.Parent = row
+    timeLbl.BackgroundTransparency = 1
+    timeLbl.Position = UDim2.new(0, 10, 0, 0)
+    timeLbl.Size = UDim2.new(0, 60, 1, 0)
+    timeLbl.Font = Enum.Font.GothamMedium
+    timeLbl.Text = os.date("%H:%M:%S")
+    timeLbl.TextSize = 11
+    timeLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedAccentText", timeLbl, "TextColor3")
+
+    local textLbl = Instance.new("TextLabel")
+    textLbl.Parent = row
+    textLbl.BackgroundTransparency = 1
+    textLbl.Position = UDim2.new(0, 76, 0, 0)
+    textLbl.Size = UDim2.new(1, -86, 1, 0)
+    textLbl.Font = Enum.Font.Gotham
+    textLbl.Text = text
+    textLbl.TextSize = 12
+    textLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", textLbl, "TextColor3")
+
+    table.insert(logEntries, row)
+    if #logEntries > 50 then
+        local oldest = table.remove(logEntries, 1)
+        oldest:Destroy()
+    end
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    buildPlayerRow(plr)
+end
+Players.PlayerAdded:Connect(function(plr)
+    buildPlayerRow(plr)
+    pushLog(plr.Name .. " joined (UserId " .. plr.UserId .. ")")
+end)
+Players.PlayerRemoving:Connect(function(plr)
+    removePlayerRow(plr)
+    pushLog(plr.Name .. " left")
+end)
+
+local SettingsPage = newPage("Settings", true)
+addListLayout(SettingsPage, 10)
+
+local function makeToggleRow(order, label, initial, onChanged)
+    local row = Instance.new("Frame")
+    row.Parent = SettingsPage
+    row.LayoutOrder = order
+    row.Size = UDim2.new(1, 0, 0, 40)
+    register("ThemedPanel", row, "BackgroundColor3")
+    corner(row, 8)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.Size = UDim2.new(0.7, 0, 1, 0)
+    lbl.Font = Enum.Font.Gotham
+    lbl.Text = label
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", lbl, "TextColor3")
+
+    local track = Instance.new("Frame")
+    track.Parent = row
+    track.Position = UDim2.new(1, -54, 0.5, -10)
+    track.Size = UDim2.new(0, 40, 0, 20)
+    track.BackgroundColor3 = initial and Themes[State.ThemeName].Accent or Color3.fromRGB(60, 62, 75)
+    corner(track, 10)
+
+    local knob = Instance.new("Frame")
+    knob.Parent = track
+    knob.Size = UDim2.new(0, 16, 0, 16)
+    knob.Position = initial and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    corner(knob, 8)
+
+    local btn = Instance.new("TextButton")
+    btn.Parent = row
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.new(1, 0, 1, 0)
+    btn.Text = ""
+
+    local state = initial
+    btn.MouseButton1Click:Connect(function()
+        state = not state
+        playSound(UiClickSoundId, 0.3)
+        tween(knob, {Position = state and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)}, 0.15)
+        tween(track, {BackgroundColor3 = state and Themes[State.ThemeName].Accent or Color3.fromRGB(60, 62, 75)}, 0.15)
+        onChanged(state)
+    end)
+
+    register("ThemedAccentText", track, "BackgroundColor3")
+    return row
+end
+
+local function makeThemeRow(order)
+    local row = Instance.new("Frame")
+    row.Parent = SettingsPage
+    row.LayoutOrder = order
+    row.Size = UDim2.new(1, 0, 0, 44)
+    register("ThemedPanel", row, "BackgroundColor3")
+    corner(row, 8)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 12, 0, 0)
+    lbl.Size = UDim2.new(0.4, 0, 1, 0)
+    lbl.Font = Enum.Font.Gotham
+    lbl.Text = "Theme"
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", lbl, "TextColor3")
+
+    local optionsHolder = Instance.new("Frame")
+    optionsHolder.Parent = row
+    optionsHolder.BackgroundTransparency = 1
+    optionsHolder.Position = UDim2.new(0.42, 0, 0, 6)
+    optionsHolder.Size = UDim2.new(0.58, -12, 1, -12)
+
+    local optLayout = Instance.new("UIListLayout")
+    optLayout.FillDirection = Enum.FillDirection.Horizontal
+    optLayout.Padding = UDim.new(0, 6)
+    optLayout.Parent = optionsHolder
+
+    for themeName, theme in pairs(Themes) do
+        local swatch = Instance.new("TextButton")
+        swatch.Parent = optionsHolder
+        swatch.Size = UDim2.new(0, 28, 0, 28)
+        swatch.BackgroundColor3 = theme.Accent
+        swatch.Text = ""
+        corner(swatch, 14)
+        if themeName == State.ThemeName then
+            stroke(swatch, Color3.fromRGB(255, 255, 255), 2, 0)
+        end
+        swatch.MouseButton1Click:Connect(function()
+            playSound(UiClickSoundId, 0.3)
+            applyTheme(themeName)
+            for _, child in ipairs(optionsHolder:GetChildren()) do
+                if child:IsA("TextButton") then
+                    local s = child:FindFirstChildOfClass("UIStroke")
+                    if s then s:Destroy() end
+                end
+            end
+            stroke(swatch, Color3.fromRGB(255, 255, 255), 2, 0)
+        end)
+    end
+
+    return row
+end
+
+makeThemeRow(1)
+makeToggleRow(2, "Show FPS Counter", State.ShowFps, function(v)
+    State.ShowFps = v
+    FpsRow.Visible = v
+end)
+makeToggleRow(3, "UI Sound Effects", State.SoundEnabled, function(v)
+    State.SoundEnabled = v
+end)
+makeToggleRow(4, "Reduce Motion", State.ReduceMotion, function(v)
+    State.ReduceMotion = v
+end)
+makeToggleRow(5, "Compact Mode", State.CompactMode, function(v)
+    State.CompactMode = v
+    local target = v and UDim2.new(0, 520, 0, 240) or UDim2.new(0, 520, 0, 380)
+    tween(MainFrame, {Size = target}, 0.25)
+    Sidebar.Visible = not v
+    Content.Position = v and UDim2.new(0, 16, 0, 56) or UDim2.new(0, 142, 0, 56)
+    Content.Size = v and UDim2.new(1, -32, 1, -66) or UDim2.new(1, -158, 1, -66)
+end)
+
+local AboutPage = newPage("About")
+local aboutLabel = Instance.new("TextLabel")
+aboutLabel.Parent = AboutPage
+aboutLabel.BackgroundTransparency = 1
+aboutLabel.Size = UDim2.new(1, 0, 1, 0)
+aboutLabel.Font = Enum.Font.Gotham
+aboutLabel.TextSize = 12
+aboutLabel.TextWrapped = true
+aboutLabel.TextXAlignment = Enum.TextXAlignment.Left
+aboutLabel.TextYAlignment = Enum.TextYAlignment.Top
+aboutLabel.Text = "Cyber HUD Dashboard\n\nA read-only analytical overlay: character telemetry, network graphs, engine memory usage (via the real Roblox Stats service), and a live player roster. Nothing here writes to Health, WalkSpeed, position, currency or any other game value — every number is observed, never set.\n\nLatency graphs reflect ping only; true packet loss and server geo-region cannot be measured from a client script, so those are intentionally left out rather than guessed.\n\nToggle visibility: Right Ctrl — Drag: Top Bar — Resize: Bottom-right corner"
+register("ThemedMutedText", aboutLabel, "TextColor3")
+
+local ToastHolder = Instance.new("Frame")
+ToastHolder.Name = "ToastHolder"
+ToastHolder.Parent = ScreenGui
+ToastHolder.BackgroundTransparency = 1
+ToastHolder.AnchorPoint = Vector2.new(0.5, 1)
+ToastHolder.Position = UDim2.new(0.5, 0, 1, -20)
+ToastHolder.Size = UDim2.new(0, 300, 0, 240)
+local toastLayout = Instance.new("UIListLayout")
+toastLayout.Parent = ToastHolder
+toastLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+toastLayout.Padding = UDim.new(0, 6)
+
+local function notify(text, kind)
+    local theme = Themes[State.ThemeName]
+    local existing = ToastHolder:GetChildren()
+    local count = 0
+    for _, c in ipairs(existing) do
+        if c:IsA("Frame") then count += 1 end
+    end
+    if count >= 5 then
+        for _, c in ipairs(existing) do
+            if c:IsA("Frame") then
+                c:Destroy()
+                break
+            end
+        end
+    end
+
+    local toast = Instance.new("Frame")
+    toast.Parent = ToastHolder
+    toast.BackgroundColor3 = theme.Panel
+    toast.Size = UDim2.new(1, 0, 0, 36)
+    toast.BackgroundTransparency = 1
+    corner(toast, 8)
+    stroke(toast, kind == "warn" and theme.Warn or theme.Accent, 1, 0.4)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = toast
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1, -16, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.Text = text
+    lbl.TextColor3 = theme.TextPrimary
+    lbl.TextSize = 12
+    lbl.TextTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+    tween(toast, {BackgroundTransparency = 0.1}, 0.2)
+    tween(lbl, {TextTransparency = 0}, 0.2)
+    task.delay(2.5, function()
+        tween(toast, {BackgroundTransparency = 1}, 0.3)
+        tween(lbl, {TextTransparency = 1}, 0.3)
+        task.wait(0.3)
+        toast:Destroy()
+    end)
+end
+
+local currentPage = nil
+local function selectTab(name)
+    if currentPage == name then return end
+    currentPage = name
+    playSound(UiSwooshSoundId, 0.25)
+    local theme = Themes[State.ThemeName]
+    for tabName, btn in pairs(tabButtons) do
+        local active = tabName == name
+        btn.TextColor3 = active and theme.TextPrimary or theme.TextMuted
+        local indicator = btn:FindFirstChild("Indicator")
+        tween(indicator, {BackgroundTransparency = active and 0 or 1}, 0.15)
+    end
+    for pageName, frame in pairs(pageFrames) do
+        if pageName == name then
+            frame.Visible = true
+            frame.Position = UDim2.new(0, 12, 0, 0)
+            frame.BackgroundTransparency = 1
+            tween(frame, {Position = UDim2.new(0, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back)
+        else
+            frame.Visible = false
+        end
+    end
+end
+
+for name, btn in pairs(tabButtons) do
+    btn.MouseButton1Click:Connect(function() selectTab(name) end)
+    btn.MouseEnter:Connect(function()
+        if currentPage ~= name then
+            tween(btn, {BackgroundTransparency = 0.9}, 0.15)
+        end
+        playSound(UiHoverSoundId, 0.12)
+    end)
+    btn.MouseLeave:Connect(function()
+        if currentPage ~= name then
+            tween(btn, {BackgroundTransparency = 1}, 0.15)
+        end
+    end)
+end
+
+function applyTheme(name)
+    local theme = Themes[name]
+    if not theme then return end
+    State.ThemeName = name
+    for _, entry in ipairs(Registry.ThemedBackground) do
+        tween(entry[1], {[entry[2]] = theme.Background}, 0.2)
+    end
+    for _, entry in ipairs(Registry.ThemedPanel) do
+        tween(entry[1], {[entry[2]] = theme.Panel}, 0.2)
+    end
+    for _, entry in ipairs(Registry.ThemedSidebar) do
+        tween(entry[1], {[entry[2]] = theme.Sidebar}, 0.2)
+    end
+    for _, entry in ipairs(Registry.ThemedMutedText) do
+        entry[1][entry[2]] = theme.TextMuted
+    end
+    for _, entry in ipairs(Registry.ThemedPrimaryText) do
+        entry[1][entry[2]] = theme.TextPrimary
+    end
+    for _, entry in ipairs(Registry.ThemedAccentText) do
+        entry[1][entry[2]] = theme.Accent
+    end
+    AccentGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, theme.Accent),
+        ColorSequenceKeypoint.new(0.5, theme.AccentAlt),
+        ColorSequenceKeypoint.new(1, theme.Accent),
+    })
+    GlowStroke.Color = theme.Accent
+    HealthValue.TextColor3 = theme.Good
+    PingValue.TextColor3 = theme.Good
+    for _, btn in pairs(tabButtons) do
+        if btn.Name == currentPage then
+            btn.TextColor3 = theme.TextPrimary
+        end
+    end
+end
+
+applyTheme(State.ThemeName)
+selectTab("Overview")
+
+local expandedSize = MainFrame.Size
+MinimizeButton.MouseButton1Click:Connect(function()
+    State.Minimized = not State.Minimized
+    playSound(UiClickSoundId, 0.3)
+    if State.Minimized then
+        tween(MainFrame, {Size = UDim2.new(0, expandedSize.X.Offset, 0, 46)}, 0.25)
+    else
+        tween(MainFrame, {Size = expandedSize}, 0.25)
+    end
+end)
+
+local function setVisible(state)
+    State.Visible = state
+    if state then
+        MainFrame.Visible = true
+        tween(MainFrame, {Size = expandedSize}, 0.2)
+    else
+        tween(MainFrame, {Size = UDim2.new(expandedSize.X.Scale, expandedSize.X.Offset, 0, 0)}, 0.2)
+        task.delay(0.2, function()
+            if not State.Visible then MainFrame.Visible = false end
+        end)
+    end
+end
+
+CloseButton.MouseButton1Click:Connect(function()
+    playSound(UiClickSoundId, 0.3)
+    setVisible(false)
+    notify("Dashboard hidden — press Right Ctrl to reopen")
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        setVisible(not State.Visible)
+    end
+end)
+
+do
+    local dragging, dragStart, startPos = false, nil, nil
+    TopBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            MainFrame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+local ResizeHandle = Instance.new("TextButton")
+ResizeHandle.Parent = MainFrame
+ResizeHandle.AnchorPoint = Vector2.new(1, 1)
+ResizeHandle.Position = UDim2.new(1, -4, 1, -4)
+ResizeHandle.Size = UDim2.new(0, 18, 0, 18)
+ResizeHandle.BackgroundTransparency = 1
+ResizeHandle.Text = "โ—ข"
+ResizeHandle.TextColor3 = Color3.fromRGB(120, 122, 135)
+ResizeHandle.TextSize = 14
+ResizeHandle.Font = Enum.Font.GothamBold
+
+do
+    local resizing, resizeStart, startSize = false, nil, nil
+    ResizeHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            resizing = true
+            resizeStart = input.Position
+            startSize = MainFrame.Size
+            expandedSize = MainFrame.Size
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    resizing = false
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - resizeStart
+            local newWidth = math.clamp(startSize.X.Offset + delta.X, 420, 760)
+            local newHeight = math.clamp(startSize.Y.Offset + delta.Y, 300, 620)
+            MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+            expandedSize = MainFrame.Size
+        end
+    end)
+end
+
+local frameCount, fpsAccum = 0, 0
+local lastPing = 0
+local pingHistoryForJitter = {}
+
+local function healthColor(pct)
+    local theme = Themes[State.ThemeName]
+    if pct > 0.5 then return theme.Good
+    elseif pct > 0.2 then return theme.Warn
+    else return theme.Bad end
+end
+
+local function pingColor(ms)
+    local theme = Themes[State.ThemeName]
+    if ms < 100 then return theme.Good
+    elseif ms < 250 then return theme.Warn
+    else return theme.Bad end
+end
+
+local humanoidStateNames = {}
+for _, e in ipairs(Enum.HumanoidStateType:GetEnumItems()) do
+    humanoidStateNames[e] = e.Name
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    frameCount += 1
+    fpsAccum += dt
+    if fpsAccum >= 0.5 then
+        local fps = frameCount / fpsAccum
+        if State.ShowFps then
+            FpsValue.Text = tostring(math.floor(fps))
+        end
+        table.insert(frameTimeSamples, (fpsAccum / frameCount) * 1000)
+        table.remove(frameTimeSamples, 1)
+        updateBarGraph(FrameTimeBars, frameTimeSamples, 50)
+        frameCount, fpsAccum = 0, 0
+    end
+
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if hum then
+            HealthValue.Text = math.floor(hum.Health) .. " / " .. math.floor(hum.MaxHealth)
+            HealthValue.TextColor3 = healthColor(hum.Health / math.max(hum.MaxHealth, 1))
+            SpeedValue.Text = tostring(math.floor(hum.WalkSpeed))
+            JumpValue.Text = tostring(math.floor(hum.JumpPower))
+            local ok, stateName = pcall(function() return humanoidStateNames[hum:GetState()] end)
+            StateValue.Text = ok and stateName or "Unknown"
+        end
+        if root then
+            VelocityValue.Text = tostring(math.floor(root.AssemblyLinearVelocity.Magnitude))
+        end
+        GravityValue.Text = tostring(math.floor(workspace.Gravity))
+    end
+end)
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        local ms = math.floor(LocalPlayer:GetNetworkPing() * 1000)
+        PingValue.Text = ms .. " ms"
+        PingValue.TextColor3 = pingColor(ms)
+        StatusDot.BackgroundColor3 = pingColor(ms)
+
+        table.insert(pingSamples, ms)
+        table.remove(pingSamples, 1)
+        updateBarGraph(PingBars, pingSamples, 300)
+
+        table.insert(pingHistoryForJitter, ms)
+        if #pingHistoryForJitter > 10 then
+            table.remove(pingHistoryForJitter, 1)
+        end
+        if #pingHistoryForJitter >= 4 then
+            local sum, count = 0, 0
+            for i = 2, #pingHistoryForJitter do
+                sum += math.abs(pingHistoryForJitter[i] - pingHistoryForJitter[i - 1])
+                count += 1
+            end
+            local avgJitter = sum / math.max(count, 1)
+            if avgJitter < 15 then
+                ConnectionQualityValue.Text = "Stable"
+                ConnectionQualityValue.TextColor3 = Themes[State.ThemeName].Good
+            elseif avgJitter < 40 then
+                ConnectionQualityValue.Text = "Fluctuating"
+                ConnectionQualityValue.TextColor3 = Themes[State.ThemeName].Warn
+            else
+                ConnectionQualityValue.Text = "Unstable"
+                ConnectionQualityValue.TextColor3 = Themes[State.ThemeName].Bad
+                pushLog("Lag spike detected: " .. ms .. "ms")
+            end
+        end
+
+        local allPlayers = Players:GetPlayers()
+        PlayerCountValue.Text = #allPlayers .. " / " .. Players.MaxPlayers
+        local ageSum = 0
+        for _, plr in ipairs(allPlayers) do
+            ageSum += plr.AccountAge
+        end
+        if #allPlayers > 0 then
+            AvgAccountAgeValue.Text = math.floor(ageSum / #allPlayers) .. " days"
+        end
+
+        SessionUptimeValue.Text = math.floor(os.clock() - State.SessionStart) .. "s"
+
+        for _, def in ipairs(memoryTags) do
+            local ok, mb = pcall(function()
+                if def.tag == nil then
+                    return Stats:GetTotalMemoryUsageMb()
+                else
+                    return Stats:GetMemoryUsageMbForTag(def.tag)
+                end
+            end)
+            if ok and memoryRows[def.label] then
+                memoryRows[def.label].Text = string.format("%.1f MB", mb)
+            end
+        end
+
+        task.wait(1)
+    end
+end)
+
+pushLog("Dashboard initialized")
+notify("Cyber HUD Online")
