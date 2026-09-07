@@ -1,0 +1,1998 @@
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
+local Stats = game:GetService("Stats")
+local Debris = game:GetService("Debris")
+
+local LocalPlayer = Players.LocalPlayer
+
+local Themes = {
+    NetaGreen = {
+        Background = Color3.fromRGB(10, 12, 11),
+        Panel = Color3.fromRGB(16, 20, 18),
+        Card = Color3.fromRGB(19, 24, 21),
+        Sidebar = Color3.fromRGB(8, 10, 9),
+        Accent = Color3.fromRGB(60, 255, 140),
+        AccentAlt = Color3.fromRGB(120, 255, 200),
+        TextPrimary = Color3.fromRGB(235, 245, 240),
+        TextMuted = Color3.fromRGB(130, 160, 145),
+        Good = Color3.fromRGB(90, 255, 150),
+        Warn = Color3.fromRGB(255, 200, 90),
+        Bad = Color3.fromRGB(255, 95, 95),
+    },
+    Violet = {
+        Background = Color3.fromRGB(24, 25, 32),
+        Panel = Color3.fromRGB(30, 32, 41),
+        Card = Color3.fromRGB(34, 36, 46),
+        Sidebar = Color3.fromRGB(20, 21, 27),
+        Accent = Color3.fromRGB(120, 130, 245),
+        AccentAlt = Color3.fromRGB(80, 220, 240),
+        TextPrimary = Color3.fromRGB(235, 235, 240),
+        TextMuted = Color3.fromRGB(150, 152, 165),
+        Good = Color3.fromRGB(90, 240, 150),
+        Warn = Color3.fromRGB(255, 190, 90),
+        Bad = Color3.fromRGB(255, 95, 95),
+    },
+    Sunset = {
+        Background = Color3.fromRGB(30, 22, 22),
+        Panel = Color3.fromRGB(38, 28, 28),
+        Card = Color3.fromRGB(42, 32, 32),
+        Sidebar = Color3.fromRGB(24, 17, 17),
+        Accent = Color3.fromRGB(245, 140, 90),
+        AccentAlt = Color3.fromRGB(245, 100, 130),
+        TextPrimary = Color3.fromRGB(245, 235, 230),
+        TextMuted = Color3.fromRGB(175, 150, 145),
+        Good = Color3.fromRGB(120, 230, 150),
+        Warn = Color3.fromRGB(255, 190, 90),
+        Bad = Color3.fromRGB(255, 95, 95),
+    },
+}
+
+local State = {
+    ThemeName = "NetaGreen",
+    ShowFps = true,
+    SoundEnabled = true,
+    CompactMode = false,
+    ReduceMotion = false,
+    Visible = true,
+    Minimized = false,
+    SessionStart = os.clock(),
+}
+
+local Registry = {
+    ThemedBackground = {},
+    ThemedPanel = {},
+    ThemedCard = {},
+    ThemedSidebar = {},
+    ThemedMutedText = {},
+    ThemedPrimaryText = {},
+    ThemedAccentText = {},
+    ScalableCorners = {},
+    ScalableStrokes = {},
+    ScalableTextConstraints = {},
+    Columns = {},
+}
+
+local function register(bucket, inst, prop)
+    table.insert(Registry[bucket], {inst, prop})
+end
+
+local function corner(inst, radius)
+    local base = radius or 8
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, base)
+    c.Parent = inst
+    table.insert(Registry.ScalableCorners, {c, base})
+    return c
+end
+
+local function smartText(label, minSize)
+    local maxSize = label.TextSize
+    if not maxSize or maxSize <= 0 then return label end
+    label.TextScaled = true
+    local constraint = Instance.new("UITextSizeConstraint")
+    constraint.MaxTextSize = maxSize
+    constraint.MinTextSize = minSize or 6
+    constraint.Parent = label
+    table.insert(Registry.ScalableTextConstraints, {constraint, maxSize, minSize or 6})
+    return label
+end
+
+local function stroke(inst, color, thickness, transparency)
+    local base = thickness or 1
+    local s = Instance.new("UIStroke")
+    s.Color = color
+    s.Thickness = base
+    s.Transparency = transparency or 0.5
+    s.Parent = inst
+    table.insert(Registry.ScalableStrokes, {s, base})
+    return s
+end
+
+local function tween(inst, props, time, style, direction)
+    local t = TweenService:Create(inst, TweenInfo.new(time or 0.22, style or Enum.EasingStyle.Quad, direction or Enum.EasingDirection.Out), props)
+    t:Play()
+    return t
+end
+
+local UiClickSoundId = "rbxassetid://6042053626"
+local UiHoverSoundId = "rbxassetid://6042053680"
+local UiSwooshSoundId = "rbxassetid://6042053693"
+
+local function playSound(id, volume)
+    if not State.SoundEnabled then return end
+    local ok, snd = pcall(function()
+        local s = Instance.new("Sound")
+        s.SoundId = id
+        s.Volume = volume or 0.4
+        s.Parent = SoundService
+        return s
+    end)
+    if ok and snd then
+        snd:Play()
+        Debris:AddItem(snd, 2)
+    end
+end
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "UserDashboardUI"
+ScreenGui.Parent = game.CoreGui
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 10
+ScreenGui.IgnoreGuiInset = true
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Parent = ScreenGui
+MainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+MainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+MainFrame.Size = UDim2.new(0, 680, 0, 440)
+MainFrame.ClipsDescendants = false
+MainFrame.Visible = false
+MainFrame.Active = true
+corner(MainFrame, 14)
+register("ThemedBackground", MainFrame, "BackgroundColor3")
+
+local GlowStroke = stroke(MainFrame, Color3.fromRGB(255, 145, 0), 2, 0.08)
+local GlowGradient = Instance.new("UIGradient")
+GlowGradient.Parent = GlowStroke
+GlowGradient.Rotation = 0
+task.spawn(function()
+    while ScreenGui.Parent do
+        if not State.ReduceMotion then
+            local tw = tween(GlowGradient, {Rotation = 360}, 4, Enum.EasingStyle.Linear)
+            tw.Completed:Wait()
+            GlowGradient.Rotation = 0
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+local ParticleLayer = Instance.new("Frame")
+ParticleLayer.Name = "ParticleLayer"
+ParticleLayer.Parent = MainFrame
+ParticleLayer.BackgroundTransparency = 1
+ParticleLayer.Size = UDim2.new(1, 0, 1, 0)
+ParticleLayer.ZIndex = 0
+
+for i = 1, 14 do
+    local dot = Instance.new("Frame")
+    dot.Parent = ParticleLayer
+    dot.Size = UDim2.new(0, 3, 0, 3)
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.BackgroundTransparency = 0.8
+    dot.ZIndex = 0
+    corner(dot, 2)
+    dot.Position = UDim2.new(math.random(), 0, 1 + math.random(), 0)
+    task.spawn(function()
+        while ScreenGui.Parent do
+            if State.ReduceMotion then
+                task.wait(1)
+            else
+                local startY = 1 + math.random() * 0.5
+                dot.Position = UDim2.new(math.random(), 0, startY, 0)
+                local duration = 4 + math.random() * 4
+                local tw = tween(dot, {Position = UDim2.new(dot.Position.X.Scale, 0, -0.1, 0)}, duration, Enum.EasingStyle.Linear)
+                tw.Completed:Wait()
+            end
+        end
+    end)
+end
+
+local HeaderBar = Instance.new("Frame")
+HeaderBar.Name = "HeaderBar"
+HeaderBar.Parent = MainFrame
+HeaderBar.BackgroundTransparency = 1
+HeaderBar.Size = UDim2.new(1, 0, 0, 58)
+
+local LogoFrame = Instance.new("Frame")
+LogoFrame.Parent = HeaderBar
+LogoFrame.Size = UDim2.new(0, 44, 0, 44)
+LogoFrame.Position = UDim2.new(0, 10, 0, 6)
+LogoFrame.BackgroundTransparency = 1
+corner(LogoFrame, 10)
+
+local LogoRing = stroke(LogoFrame, Color3.fromRGB(255, 145, 0), 2, 0.08)
+register("ThemedAccentText", LogoRing, "Color")
+
+local LogoImage = Instance.new("ImageLabel")
+LogoImage.Name = "LogoImage"
+LogoImage.Parent = LogoFrame
+LogoImage.Size = UDim2.new(1, -2, 1, -2)
+LogoImage.Position = UDim2.new(0, 1, 0, 1)
+LogoImage.BackgroundTransparency = 1
+LogoImage.ScaleType = Enum.ScaleType.Crop
+LogoImage.Image = ""
+corner(LogoImage, 10)
+
+local LogoFallback = Instance.new("Frame")
+LogoFallback.Parent = LogoFrame
+LogoFallback.Size = UDim2.new(1, -2, 1, -2)
+LogoFallback.Position = UDim2.new(0, 1, 0, 1)
+LogoFallback.Rotation = 45
+register("ThemedAccentText", LogoFallback, "BackgroundColor3")
+corner(LogoFallback, 9)
+
+local ReopenBubble = Instance.new("ImageButton")
+ReopenBubble.Name = "ReopenBubble"
+ReopenBubble.Parent = ScreenGui
+ReopenBubble.Size = UDim2.new(0, 52, 0, 52)
+ReopenBubble.Position = UDim2.new(1, -76, 1, -140)
+ReopenBubble.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+ReopenBubble.BackgroundTransparency = 0.1
+ReopenBubble.Image = ""
+ReopenBubble.ScaleType = Enum.ScaleType.Crop
+ReopenBubble.Visible = false
+ReopenBubble.ZIndex = 20
+corner(ReopenBubble, 26)
+local ReopenRing = stroke(ReopenBubble, Color3.fromRGB(255, 145, 0), 2, 0.1)
+register("ThemedAccentText", ReopenRing, "Color")
+
+local ReopenFallback = Instance.new("Frame")
+ReopenFallback.Parent = ReopenBubble
+ReopenFallback.Size = UDim2.new(0.5, 0, 0.5, 0)
+ReopenFallback.Position = UDim2.new(0.25, 0, 0.25, 0)
+ReopenFallback.Rotation = 45
+ReopenFallback.ZIndex = 21
+register("ThemedAccentText", ReopenFallback, "BackgroundColor3")
+corner(ReopenFallback, 6)
+
+local logoUrl = "https://i.ibb.co/nM6rjBVy/file-0000000023c48230964f3957048bed95.png"
+task.spawn(function()
+    local canCache = writefile and isfile and getcustomasset
+    local loaded = false
+    local finalImage = nil
+    if canCache then
+        local ok = pcall(function()
+            local imageData = game:HttpGet(logoUrl)
+            writefile("dashboard_logo_cache.png", imageData)
+            finalImage = getcustomasset("dashboard_logo_cache.png")
+        end)
+        loaded = ok and finalImage ~= nil
+        if not loaded then
+            local httpGet = (syn and syn.request) or http_request or request
+            if httpGet then
+                local ok2, response = pcall(httpGet, {Url = logoUrl, Method = "GET"})
+                if ok2 and response and response.Body then
+                    local ok3 = pcall(function()
+                        writefile("dashboard_logo_cache.png", response.Body)
+                        finalImage = getcustomasset("dashboard_logo_cache.png")
+                    end)
+                    loaded = ok3 and finalImage ~= nil
+                end
+            end
+        end
+    end
+    if loaded and finalImage then
+        LogoImage.Image = finalImage
+        ReopenBubble.Image = finalImage
+        LogoFallback.Visible = false
+        ReopenFallback.Visible = false
+    end
+end)
+
+local Title = Instance.new("TextLabel")
+Title.Parent = HeaderBar
+Title.BackgroundTransparency = 1
+Title.Position = UDim2.new(0, 62, 0, 6)
+Title.Size = UDim2.new(0.6, 0, 0, 20)
+Title.Font = Enum.Font.GothamBold
+Title.Text = "ErrorWalker404virus"
+Title.TextScaled = true
+local TitleSizeConstraint = Instance.new("UITextSizeConstraint")
+TitleSizeConstraint.MaxTextSize = 18
+TitleSizeConstraint.MinTextSize = 10
+TitleSizeConstraint.Parent = Title
+Title.TextSize = 18
+Title.TextXAlignment = Enum.TextXAlignment.Left
+register("ThemedPrimaryText", Title, "TextColor3")
+table.insert(Registry.ScalableTextConstraints, {TitleSizeConstraint, 18, 10})
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        if not State.ReduceMotion then
+            Title.TextColor3 = Color3.fromRGB(255, 60, 60)
+            task.wait(0.05)
+            Title.TextColor3 = Themes[State.ThemeName].TextPrimary
+            task.wait(math.random(4, 9))
+        else
+            task.wait(1)
+        end
+    end
+end)
+
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Parent = HeaderBar
+Subtitle.BackgroundTransparency = 1
+Subtitle.Position = UDim2.new(0, 62, 0, 28)
+Subtitle.Size = UDim2.new(0.7, 0, 0, 14)
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.Text = "Client Panel · Read-Only Build"
+Subtitle.TextSize = 11
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+register("ThemedMutedText", Subtitle, "TextColor3")
+
+local StatusDot = Instance.new("Frame")
+StatusDot.Parent = HeaderBar
+StatusDot.Size = UDim2.new(0, 8, 0, 8)
+StatusDot.Position = UDim2.new(0, 62, 0, 46)
+StatusDot.BackgroundColor3 = Color3.fromRGB(90, 240, 150)
+corner(StatusDot, 4)
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Parent = HeaderBar
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Position = UDim2.new(0, 76, 0, 40)
+StatusLabel.Size = UDim2.new(0, 120, 0, 14)
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.Text = "Connected"
+StatusLabel.TextSize = 10
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+register("ThemedMutedText", StatusLabel, "TextColor3")
+
+local function makeTopButton(text, xOffset, color)
+    local b = Instance.new("TextButton")
+    b.Parent = HeaderBar
+    b.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    b.BackgroundTransparency = 1
+    b.Position = UDim2.new(1, xOffset, 0, 12)
+    b.Size = UDim2.new(0, 30, 0, 30)
+    b.Font = Enum.Font.GothamBold
+    b.Text = text
+    b.TextColor3 = color
+    b.TextSize = 16
+    corner(b, 6)
+    b.MouseEnter:Connect(function()
+        tween(b, {BackgroundTransparency = 0.85}, 0.15)
+        playSound(UiHoverSoundId, 0.15)
+    end)
+    b.MouseLeave:Connect(function()
+        tween(b, {BackgroundTransparency = 1}, 0.15)
+    end)
+    return b
+end
+
+local CloseButton = makeTopButton("X", -34, Color3.fromRGB(255, 95, 95))
+
+local Sidebar = Instance.new("ScrollingFrame")
+Sidebar.Name = "Sidebar"
+Sidebar.Parent = MainFrame
+Sidebar.Position = UDim2.new(0, 0, 0, 58)
+Sidebar.Size = UDim2.new(0, 168, 1, -58)
+Sidebar.ScrollBarThickness = 3
+Sidebar.CanvasSize = UDim2.new(0, 0, 0, 0)
+Sidebar.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Sidebar.ScrollingDirection = Enum.ScrollingDirection.Y
+register("ThemedSidebar", Sidebar, "BackgroundColor3")
+
+local SidebarLayout = Instance.new("UIListLayout")
+SidebarLayout.Parent = Sidebar
+SidebarLayout.Padding = UDim.new(0, 4)
+SidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local SidebarPad = Instance.new("UIPadding")
+SidebarPad.PaddingTop = UDim.new(0, 12)
+SidebarPad.PaddingLeft = UDim.new(0, 10)
+SidebarPad.PaddingRight = UDim.new(0, 10)
+SidebarPad.Parent = Sidebar
+
+local tabDefs = {
+    {name = "Overview", icon = "◆", subtitle = "Client stats, etc."},
+    {name = "Network", icon = "◎", subtitle = "Ping, quality, etc."},
+    {name = "Memory", icon = "▤", subtitle = "Engine usage, etc."},
+    {name = "Roster", icon = "☰", subtitle = "Server join, etc."},
+    {name = "Activity", icon = "▧", subtitle = "Event log, etc."},
+    {name = "Appearance", icon = "◐", subtitle = "Theme, display"},
+    {name = "About", icon = "ℹ", subtitle = "Panel info"},
+}
+
+local tabButtons = {}
+for i, def in ipairs(tabDefs) do
+    local btn = Instance.new("TextButton")
+    btn.Name = def.name
+    btn.LayoutOrder = i
+    btn.Parent = Sidebar
+    btn.BackgroundTransparency = 1
+    btn.Size = UDim2.new(1, 0, 0, 46)
+    btn.AutoButtonColor = false
+    btn.Text = ""
+    register("ThemedPanel", btn, "BackgroundColor3")
+    corner(btn, 8)
+
+    local indicator = Instance.new("Frame")
+    indicator.Name = "Indicator"
+    indicator.Parent = btn
+    indicator.Size = UDim2.new(0, 3, 0.7, 0)
+    indicator.Position = UDim2.new(0, 0, 0.15, 0)
+    indicator.BackgroundTransparency = 1
+    register("ThemedAccentText", indicator, "BackgroundColor3")
+    corner(indicator, 2)
+
+    local iconBadge = Instance.new("Frame")
+    iconBadge.Parent = btn
+    iconBadge.Position = UDim2.new(0, 10, 0.5, -14)
+    iconBadge.Size = UDim2.new(0, 28, 0, 28)
+    iconBadge.BackgroundTransparency = 1
+    corner(iconBadge, 8)
+    register("ThemedCard", iconBadge, "BackgroundColor3")
+
+    local iconLbl = Instance.new("TextLabel")
+    iconLbl.Parent = iconBadge
+    iconLbl.BackgroundTransparency = 1
+    iconLbl.Size = UDim2.new(1, 0, 1, 0)
+    iconLbl.Font = Enum.Font.GothamBold
+    iconLbl.Text = def.icon
+    iconLbl.TextSize = 14
+    register("ThemedAccentText", iconLbl, "TextColor3")
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Name = "TitleLbl"
+    titleLbl.Parent = btn
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Position = UDim2.new(0, 46, 0, 6)
+    titleLbl.Size = UDim2.new(1, -54, 0, 16)
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.Text = def.name
+    titleLbl.TextSize = 13
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedMutedText", titleLbl, "TextColor3")
+
+    local subLbl = Instance.new("TextLabel")
+    subLbl.Parent = btn
+    subLbl.BackgroundTransparency = 1
+    subLbl.Position = UDim2.new(0, 46, 0, 23)
+    subLbl.Size = UDim2.new(1, -54, 0, 14)
+    subLbl.Font = Enum.Font.Gotham
+    subLbl.Text = def.subtitle
+    subLbl.TextSize = 10
+    subLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedMutedText", subLbl, "TextColor3")
+
+    tabButtons[def.name] = {button = btn, titleLbl = titleLbl}
+end
+
+local SidebarFooter = Instance.new("TextLabel")
+SidebarFooter.LayoutOrder = 999
+SidebarFooter.Parent = Sidebar
+SidebarFooter.BackgroundTransparency = 1
+SidebarFooter.Size = UDim2.new(1, 0, 0, 30)
+SidebarFooter.Font = Enum.Font.Gotham
+SidebarFooter.Text = "ErrorWalker404virus · v4.0.4"
+SidebarFooter.TextSize = 9
+SidebarFooter.TextXAlignment = Enum.TextXAlignment.Left
+SidebarFooter.TextTransparency = 0.4
+register("ThemedMutedText", SidebarFooter, "TextColor3")
+
+local Content = Instance.new("Frame")
+Content.Name = "Content"
+Content.Parent = MainFrame
+Content.BackgroundTransparency = 1
+Content.Position = UDim2.new(0, 178, 0, 68)
+Content.Size = UDim2.new(1, -194, 1, -78)
+
+local pageFrames = {}
+
+local function newPage(name)
+    local f = Instance.new("Frame")
+    f.Name = name .. "Page"
+    f.Parent = Content
+    f.BackgroundTransparency = 1
+    f.Size = UDim2.new(1, 0, 1, 0)
+    f.Visible = false
+    pageFrames[name] = f
+    return f
+end
+
+local function makeColumns(parent)
+    local holder = Instance.new("Frame")
+    holder.Parent = parent
+    holder.BackgroundTransparency = 1
+    holder.Size = UDim2.new(1, 0, 1, 0)
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.Padding = UDim.new(0, 12)
+    layout.Parent = holder
+
+    local left = Instance.new("ScrollingFrame")
+    left.Parent = holder
+    left.Size = UDim2.new(0.5, -6, 1, 0)
+    left.BackgroundTransparency = 1
+    left.ScrollBarThickness = 3
+    left.CanvasSize = UDim2.new(0, 0, 0, 0)
+    left.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local leftLayout = Instance.new("UIListLayout")
+    leftLayout.Padding = UDim.new(0, 10)
+    leftLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    leftLayout.Parent = left
+
+    local right = Instance.new("ScrollingFrame")
+    right.Parent = holder
+    right.Size = UDim2.new(0.5, -6, 1, 0)
+    right.BackgroundTransparency = 1
+    right.ScrollBarThickness = 3
+    right.CanvasSize = UDim2.new(0, 0, 0, 0)
+    right.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local rightLayout = Instance.new("UIListLayout")
+    rightLayout.Padding = UDim.new(0, 10)
+    rightLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rightLayout.Parent = right
+
+    table.insert(Registry.Columns, holder)
+    return left, right
+end
+
+local function newCard(parent, order, icon, title)
+    local card = Instance.new("Frame")
+    card.LayoutOrder = order
+    card.Parent = parent
+    card.Size = UDim2.new(1, 0, 0, 0)
+    card.AutomaticSize = Enum.AutomaticSize.Y
+    register("ThemedPanel", card, "BackgroundColor3")
+    corner(card, 10)
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop = UDim.new(0, 12)
+    pad.PaddingBottom = UDim.new(0, 12)
+    pad.PaddingLeft = UDim.new(0, 12)
+    pad.PaddingRight = UDim.new(0, 12)
+    pad.Parent = card
+
+    local outerLayout = Instance.new("UIListLayout")
+    outerLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    outerLayout.Padding = UDim.new(0, 8)
+    outerLayout.Parent = card
+
+    local headRow = Instance.new("Frame")
+    headRow.LayoutOrder = 1
+    headRow.Parent = card
+    headRow.BackgroundTransparency = 1
+    headRow.Size = UDim2.new(1, 0, 0, 24)
+
+    local iconChip = Instance.new("Frame")
+    iconChip.Parent = headRow
+    iconChip.Size = UDim2.new(0, 22, 0, 22)
+    iconChip.BackgroundTransparency = 0.85
+    register("ThemedAccentText", iconChip, "BackgroundColor3")
+    corner(iconChip, 6)
+
+    local iconLbl = Instance.new("TextLabel")
+    iconLbl.Parent = iconChip
+    iconLbl.BackgroundTransparency = 1
+    iconLbl.Size = UDim2.new(1, 0, 1, 0)
+    iconLbl.Font = Enum.Font.GothamBold
+    iconLbl.Text = icon
+    iconLbl.TextSize = 12
+    register("ThemedAccentText", iconLbl, "TextColor3")
+
+    local titleLbl = Instance.new("TextLabel")
+    titleLbl.Parent = headRow
+    titleLbl.BackgroundTransparency = 1
+    titleLbl.Position = UDim2.new(0, 30, 0, 0)
+    titleLbl.Size = UDim2.new(1, -30, 1, 0)
+    titleLbl.Font = Enum.Font.GothamBold
+    titleLbl.Text = title
+    titleLbl.TextSize = 13
+    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", titleLbl, "TextColor3")
+
+    local divider = Instance.new("Frame")
+    divider.LayoutOrder = 2
+    divider.Parent = card
+    divider.Size = UDim2.new(1, 0, 0, 2)
+    register("ThemedAccentText", divider, "BackgroundColor3")
+    corner(divider, 1)
+    local dividerGradient = Instance.new("UIGradient")
+    dividerGradient.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.85, 0.35),
+        NumberSequenceKeypoint.new(1, 0.85),
+    })
+    dividerGradient.Parent = divider
+
+    local body = Instance.new("Frame")
+    body.Name = "Body"
+    body.LayoutOrder = 3
+    body.Parent = card
+    body.BackgroundTransparency = 1
+    body.Size = UDim2.new(1, 0, 0, 0)
+    body.AutomaticSize = Enum.AutomaticSize.Y
+
+    local bodyLayout = Instance.new("UIListLayout")
+    bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    bodyLayout.Padding = UDim.new(0, 8)
+    bodyLayout.Parent = body
+
+    return card, body
+end
+
+local function bulletRow(body, order, label, value, color)
+    local row = Instance.new("Frame")
+    row.LayoutOrder = order
+    row.Parent = body
+    row.BackgroundTransparency = 1
+    row.Size = UDim2.new(1, 0, 0, 18)
+
+    local dot = Instance.new("Frame")
+    dot.Parent = row
+    dot.Size = UDim2.new(0, 6, 0, 6)
+    dot.Position = UDim2.new(0, 2, 0.5, -3)
+    dot.BackgroundColor3 = color or Themes[State.ThemeName].Accent
+    corner(dot, 3)
+    if not color then
+        register("ThemedAccentText", dot, "BackgroundColor3")
+    end
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 16, 0, 0)
+    lbl.Size = UDim2.new(0.55, 0, 1, 0)
+    lbl.Font = Enum.Font.Gotham
+    lbl.Text = label
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedMutedText", lbl, "TextColor3")
+
+    local val = Instance.new("TextLabel")
+    val.Parent = row
+    val.BackgroundTransparency = 1
+    val.Position = UDim2.new(0.5, 0, 0, 0)
+    val.Size = UDim2.new(0.5, -2, 1, 0)
+    val.Font = Enum.Font.GothamBold
+    val.Text = value
+    val.TextColor3 = color or Themes[State.ThemeName].TextPrimary
+    val.TextSize = 12
+    val.TextXAlignment = Enum.TextXAlignment.Right
+    if not color then
+        register("ThemedPrimaryText", val, "TextColor3")
+    end
+
+    return val
+end
+
+local function checkboxRow(body, order, label, initial, onChanged)
+    local row = Instance.new("Frame")
+    row.LayoutOrder = order
+    row.Parent = body
+    row.BackgroundTransparency = 1
+    row.Size = UDim2.new(1, 0, 0, 26)
+
+    local box = Instance.new("TextButton")
+    box.Parent = row
+    box.Size = UDim2.new(0, 20, 0, 20)
+    box.Position = UDim2.new(0, 0, 0.5, -10)
+    box.AutoButtonColor = false
+    box.Text = ""
+    box.BackgroundColor3 = initial and Themes[State.ThemeName].Accent or Themes[State.ThemeName].Card
+    corner(box, 5)
+    stroke(box, Themes[State.ThemeName].Accent, 1, 0.4)
+
+    local check = Instance.new("TextLabel")
+    check.Parent = box
+    check.BackgroundTransparency = 1
+    check.Size = UDim2.new(1, 0, 1, 0)
+    check.Font = Enum.Font.GothamBold
+    check.Text = "✓"
+    check.TextSize = 13
+    check.TextColor3 = Color3.fromRGB(10, 12, 11)
+    check.TextTransparency = initial and 0 or 1
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Position = UDim2.new(0, 30, 0, 0)
+    lbl.Size = UDim2.new(1, -30, 1, 0)
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.Text = label
+    lbl.TextSize = 12
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", lbl, "TextColor3")
+
+    local state = initial
+    box.MouseButton1Click:Connect(function()
+        state = not state
+        playSound(UiClickSoundId, 0.3)
+        tween(box, {BackgroundColor3 = state and Themes[State.ThemeName].Accent or Themes[State.ThemeName].Card}, 0.15)
+        tween(check, {TextTransparency = state and 0 or 1}, 0.15)
+        onChanged(state)
+    end)
+
+    return row
+end
+
+local function selectRow(body, order, label, options, onChanged)
+    local row = Instance.new("Frame")
+    row.LayoutOrder = order
+    row.Parent = body
+    row.BackgroundTransparency = 1
+    row.Size = UDim2.new(1, 0, 0, 46)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1, 0, 0, 14)
+    lbl.Font = Enum.Font.Gotham
+    lbl.Text = label
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedMutedText", lbl, "TextColor3")
+
+    local btn = Instance.new("TextButton")
+    btn.Parent = row
+    btn.Position = UDim2.new(0, 0, 0, 18)
+    btn.Size = UDim2.new(1, 0, 0, 26)
+    btn.AutoButtonColor = false
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 12
+    register("ThemedCard", btn, "BackgroundColor3")
+    register("ThemedPrimaryText", btn, "TextColor3")
+    corner(btn, 6)
+
+    local index = 1
+    btn.Text = options[index]
+    btn.MouseButton1Click:Connect(function()
+        playSound(UiClickSoundId, 0.3)
+        index = index % #options + 1
+        btn.Text = options[index]
+        onChanged(options[index], index)
+    end)
+
+    return row
+end
+
+local function progressRow(body, order, label, value, maxValue)
+    local row = Instance.new("Frame")
+    row.LayoutOrder = order
+    row.Parent = body
+    row.BackgroundTransparency = 1
+    row.Size = UDim2.new(1, 0, 0, 36)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = row
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(0.6, 0, 0, 14)
+    lbl.Font = Enum.Font.Gotham
+    lbl.Text = label
+    lbl.TextSize = 11
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedMutedText", lbl, "TextColor3")
+
+    local valLbl = Instance.new("TextLabel")
+    valLbl.Parent = row
+    valLbl.BackgroundTransparency = 1
+    valLbl.Position = UDim2.new(0.6, 0, 0, 0)
+    valLbl.Size = UDim2.new(0.4, 0, 0, 14)
+    valLbl.Font = Enum.Font.GothamBold
+    valLbl.Text = tostring(value)
+    valLbl.TextSize = 11
+    valLbl.TextXAlignment = Enum.TextXAlignment.Right
+    register("ThemedPrimaryText", valLbl, "TextColor3")
+
+    local track = Instance.new("Frame")
+    track.Parent = row
+    track.Position = UDim2.new(0, 0, 0, 20)
+    track.Size = UDim2.new(1, 0, 0, 6)
+    register("ThemedCard", track, "BackgroundColor3")
+    corner(track, 3)
+
+    local fill = Instance.new("Frame")
+    fill.Parent = track
+    fill.Size = UDim2.new(math.clamp(value / maxValue, 0, 1), 0, 1, 0)
+    register("ThemedAccentText", fill, "BackgroundColor3")
+    corner(fill, 3)
+
+    return valLbl, fill
+end
+
+local function makeBarGraph(parent, order, sampleCount, height)
+    local holder = Instance.new("Frame")
+    holder.LayoutOrder = order
+    holder.Parent = parent
+    holder.Size = UDim2.new(1, 0, 0, height)
+    register("ThemedCard", holder, "BackgroundColor3")
+    corner(holder, 8)
+
+    local barsHolder = Instance.new("Frame")
+    barsHolder.Parent = holder
+    barsHolder.BackgroundTransparency = 1
+    barsHolder.Position = UDim2.new(0, 6, 0, 6)
+    barsHolder.Size = UDim2.new(1, -12, 1, -12)
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    layout.Padding = UDim.new(0, 2)
+    layout.Parent = barsHolder
+
+    local bars = {}
+    for i = 1, sampleCount do
+        local bar = Instance.new("Frame")
+        bar.LayoutOrder = i
+        bar.Parent = barsHolder
+        bar.AnchorPoint = Vector2.new(0, 1)
+        bar.Position = UDim2.new(0, 0, 1, 0)
+        bar.Size = UDim2.new(0, math.floor(220 / sampleCount), 0, 2)
+        register("ThemedAccentText", bar, "BackgroundColor3")
+        corner(bar, 2)
+        bars[i] = bar
+    end
+
+    return holder, bars
+end
+
+local function updateBarGraph(bars, values, maxValue)
+    for i, bar in ipairs(bars) do
+        local v = values[i] or 0
+        local pct = maxValue > 0 and math.clamp(v / maxValue, 0.02, 1) or 0.02
+        bar.Size = UDim2.new(0, bar.Size.X.Offset, pct, 0)
+    end
+end
+
+local OverviewPage = newPage("Overview")
+local ovLeft, ovRight = makeColumns(OverviewPage)
+
+local infoCard, infoBody = newCard(ovLeft, 1, "◆", "Info")
+local SessionUptimeValue = bulletRow(infoBody, 1, "Session Uptime", "0s")
+local FpsValue = bulletRow(infoBody, 2, "FPS", "--")
+local PingValue = bulletRow(infoBody, 3, "Ping", "-- ms", Themes[State.ThemeName].Good)
+
+local graphCard, graphBody = newCard(ovLeft, 2, "▤", "Frame-Time History")
+local FrameTimeGraphHolder, FrameTimeBars = makeBarGraph(graphBody, 1, 36, 60)
+local frameTimeSamples = table.create(36, 0)
+
+local moveCard, moveBody = newCard(ovRight, 1, "⚙", "Character")
+local HealthValue = bulletRow(moveBody, 1, "Health", "-- / --", Themes[State.ThemeName].Good)
+local SpeedValue = bulletRow(moveBody, 2, "Walk Speed", "--")
+local JumpValue = bulletRow(moveBody, 3, "Jump Power", "--")
+local GravityValue = bulletRow(moveBody, 4, "Gravity", "--")
+local VelocityValue = bulletRow(moveBody, 5, "Velocity", "--")
+local StateValue = bulletRow(moveBody, 6, "Humanoid State", "--")
+
+local NetworkPage = newPage("Network")
+local netLeft, netRight = makeColumns(NetworkPage)
+
+local connCard, connBody = newCard(netLeft, 1, "◎", "Connection")
+local ConnectionQualityValue = bulletRow(connBody, 1, "Connection Quality", "--")
+local PlayerCountValue = bulletRow(connBody, 2, "Players", "-- / --")
+local AvgAccountAgeValue = bulletRow(connBody, 3, "Avg Account Age", "-- days")
+
+local latencyCard, latencyBody = newCard(netLeft, 2, "▤", "Latency History")
+local PingGraphHolder, PingBars = makeBarGraph(latencyBody, 1, 36, 60)
+local pingSamples = table.create(36, 0)
+
+local sessionCard, sessionBody = newCard(netRight, 1, "☰", "Session")
+bulletRow(sessionBody, 1, "Place Id", tostring(game.PlaceId))
+bulletRow(sessionBody, 2, "Job Id", game.JobId ~= "" and (game.JobId:sub(1, 8) .. "…") or "Studio")
+bulletRow(sessionBody, 3, "Username", LocalPlayer.Name)
+bulletRow(sessionBody, 4, "UserId", tostring(LocalPlayer.UserId))
+
+local MemoryPage = newPage("Memory")
+local memLeft, memRight = makeColumns(MemoryPage)
+
+local memoryTags = {
+    {label = "Total", tag = nil},
+    {label = "Lua Heap", tag = Enum.DeveloperMemoryTag.LuaHeap},
+    {label = "Instances", tag = Enum.DeveloperMemoryTag.Instances},
+    {label = "Signals", tag = Enum.DeveloperMemoryTag.Signals},
+    {label = "Script", tag = Enum.DeveloperMemoryTag.Script},
+    {label = "GUI", tag = Enum.DeveloperMemoryTag.Gui},
+    {label = "Animation", tag = Enum.DeveloperMemoryTag.Animation},
+    {label = "Physics Collision", tag = Enum.DeveloperMemoryTag.PhysicsCollision},
+    {label = "Physics Parts", tag = Enum.DeveloperMemoryTag.PhysicsParts},
+    {label = "Graphics Textures", tag = Enum.DeveloperMemoryTag.GraphicsTexture},
+    {label = "Graphics Meshes", tag = Enum.DeveloperMemoryTag.GraphicsMeshParts},
+    {label = "Graphics Solid Models", tag = Enum.DeveloperMemoryTag.GraphicsSolidModels},
+    {label = "Sounds", tag = Enum.DeveloperMemoryTag.Sounds},
+    {label = "Terrain Voxels", tag = Enum.DeveloperMemoryTag.TerrainVoxels},
+}
+
+local memACard, memABody = newCard(memLeft, 1, "▤", "Engine Memory A")
+local memBCard, memBBody = newCard(memRight, 1, "▤", "Engine Memory B")
+local memoryRows = {}
+for i, def in ipairs(memoryTags) do
+    if i <= 7 then
+        memoryRows[def.label] = bulletRow(memABody, i, def.label, "-- MB")
+    else
+        memoryRows[def.label] = bulletRow(memBBody, i - 7, def.label, "-- MB")
+    end
+end
+
+local RosterPage = newPage("Roster")
+local rosterCard, rosterBody = newCard(RosterPage, 1, "☰", "Players In Server")
+rosterCard.Size = UDim2.new(1, 0, 1, 0)
+rosterCard.AutomaticSize = Enum.AutomaticSize.None
+rosterBody.Size = UDim2.new(1, 0, 1, -40)
+rosterBody.AutomaticSize = Enum.AutomaticSize.None
+local rosterScroll = Instance.new("ScrollingFrame")
+rosterScroll.Parent = rosterBody
+rosterScroll.BackgroundTransparency = 1
+rosterScroll.Size = UDim2.new(1, 0, 1, 0)
+rosterScroll.ScrollBarThickness = 3
+rosterScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+rosterScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+local rosterLayout = Instance.new("UIListLayout")
+rosterLayout.Padding = UDim.new(0, 6)
+rosterLayout.SortOrder = Enum.SortOrder.LayoutOrder
+rosterLayout.Parent = rosterScroll
+
+local playerRows = {}
+local function buildPlayerRow(plr)
+    local row = Instance.new("Frame")
+    row.Name = plr.Name
+    row.Size = UDim2.new(1, 0, 0, 36)
+    row.LayoutOrder = plr.UserId
+    row.Parent = rosterScroll
+    register("ThemedCard", row, "BackgroundColor3")
+    corner(row, 6)
+
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Parent = row
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Position = UDim2.new(0, 12, 0, 0)
+    nameLbl.Size = UDim2.new(0.5, 0, 1, 0)
+    nameLbl.Font = Enum.Font.GothamMedium
+    nameLbl.Text = plr.Name .. (plr == LocalPlayer and " (you)" or "")
+    nameLbl.TextSize = 12
+    nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", nameLbl, "TextColor3")
+    smartText(nameLbl, 8)
+
+    local infoLbl = Instance.new("TextLabel")
+    infoLbl.Parent = row
+    infoLbl.BackgroundTransparency = 1
+    infoLbl.Position = UDim2.new(0.5, 0, 0, 0)
+    infoLbl.Size = UDim2.new(0.5, -12, 1, 0)
+    infoLbl.Font = Enum.Font.Gotham
+    infoLbl.Text = (plr.Team and plr.Team.Name or "No Team") .. " · " .. plr.AccountAge .. "d"
+    infoLbl.TextSize = 11
+    infoLbl.TextXAlignment = Enum.TextXAlignment.Right
+    register("ThemedMutedText", infoLbl, "TextColor3")
+    smartText(infoLbl, 8)
+
+    playerRows[plr] = row
+end
+
+local function removePlayerRow(plr)
+    local row = playerRows[plr]
+    if row then
+        row:Destroy()
+        playerRows[plr] = nil
+    end
+end
+
+local ActivityPage = newPage("Activity")
+local logCard, logBody = newCard(ActivityPage, 1, "▧", "Event Log")
+logCard.Size = UDim2.new(1, 0, 1, 0)
+logCard.AutomaticSize = Enum.AutomaticSize.None
+logBody.Size = UDim2.new(1, 0, 1, -40)
+logBody.AutomaticSize = Enum.AutomaticSize.None
+local logScroll = Instance.new("ScrollingFrame")
+logScroll.Parent = logBody
+logScroll.BackgroundTransparency = 1
+logScroll.Size = UDim2.new(1, 0, 1, 0)
+logScroll.ScrollBarThickness = 3
+logScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+logScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+local logLayout = Instance.new("UIListLayout")
+logLayout.Padding = UDim.new(0, 4)
+logLayout.SortOrder = Enum.SortOrder.LayoutOrder
+logLayout.Parent = logScroll
+
+local logEntries = {}
+local logCounter = 0
+local function pushLog(text)
+    logCounter = logCounter + 1
+    local row = Instance.new("Frame")
+    row.LayoutOrder = -logCounter
+    row.Parent = logScroll
+    row.Size = UDim2.new(1, 0, 0, 28)
+    register("ThemedCard", row, "BackgroundColor3")
+    corner(row, 6)
+
+    local timeLbl = Instance.new("TextLabel")
+    timeLbl.Parent = row
+    timeLbl.BackgroundTransparency = 1
+    timeLbl.Position = UDim2.new(0, 10, 0, 0)
+    timeLbl.Size = UDim2.new(0, 60, 1, 0)
+    timeLbl.Font = Enum.Font.GothamMedium
+    timeLbl.Text = os.date("%H:%M:%S")
+    timeLbl.TextSize = 10
+    timeLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedAccentText", timeLbl, "TextColor3")
+    smartText(timeLbl, 7)
+
+    local textLbl = Instance.new("TextLabel")
+    textLbl.Parent = row
+    textLbl.BackgroundTransparency = 1
+    textLbl.Position = UDim2.new(0, 76, 0, 0)
+    textLbl.Size = UDim2.new(1, -86, 1, 0)
+    textLbl.Font = Enum.Font.Gotham
+    textLbl.Text = text
+    textLbl.TextSize = 11
+    textLbl.TextXAlignment = Enum.TextXAlignment.Left
+    register("ThemedPrimaryText", textLbl, "TextColor3")
+    smartText(textLbl, 8)
+
+    table.insert(logEntries, row)
+    if #logEntries > 50 then
+        local oldest = table.remove(logEntries, 1)
+        oldest:Destroy()
+    end
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do
+    buildPlayerRow(plr)
+end
+Players.PlayerAdded:Connect(function(plr)
+    buildPlayerRow(plr)
+    pushLog(plr.Name .. " joined (UserId " .. plr.UserId .. ")")
+end)
+Players.PlayerRemoving:Connect(function(plr)
+    removePlayerRow(plr)
+    pushLog(plr.Name .. " left")
+end)
+
+local AppearancePage = newPage("Appearance")
+local appLeft, appRight = makeColumns(AppearancePage)
+
+local toggleCard, toggleBody = newCard(appLeft, 1, "⚙", "Display Toggles")
+checkboxRow(toggleBody, 1, "Show FPS Counter", State.ShowFps, function(v)
+    State.ShowFps = v
+end)
+checkboxRow(toggleBody, 2, "UI Sound Effects", State.SoundEnabled, function(v)
+    State.SoundEnabled = v
+end)
+checkboxRow(toggleBody, 3, "Reduce Motion", State.ReduceMotion, function(v)
+    State.ReduceMotion = v
+end)
+checkboxRow(toggleBody, 4, "Compact Mode", State.CompactMode, function(v)
+    setCompactMode(v)
+end)
+
+local themeCard, themeBody = newCard(appRight, 1, "◐", "Theme")
+selectRow(themeBody, 1, "Color Palette", {"NetaGreen", "Violet", "Sunset"}, function(value)
+    applyTheme(value)
+end)
+
+local AboutPage = newPage("About")
+local aboutCard, aboutBody = newCard(AboutPage, 1, "ℹ", "Panel Information")
+local aboutLabel = Instance.new("TextLabel")
+aboutLabel.LayoutOrder = 1
+aboutLabel.Parent = aboutBody
+aboutLabel.BackgroundTransparency = 1
+aboutLabel.Size = UDim2.new(1, 0, 0, 160)
+aboutLabel.AutomaticSize = Enum.AutomaticSize.Y
+aboutLabel.Font = Enum.Font.Gotham
+aboutLabel.TextSize = 12
+aboutLabel.TextWrapped = true
+aboutLabel.TextXAlignment = Enum.TextXAlignment.Left
+aboutLabel.TextYAlignment = Enum.TextYAlignment.Top
+aboutLabel.Text = "ErrorWalker404virus\n\nThis panel only reads and displays information: client performance, network quality, engine memory usage and the current player roster. It never writes to Health, WalkSpeed, position, currency or any other game value — despite the name, nothing here is actually malicious.\n\nToggle visibility: Right Ctrl · Drag: Header · Resize: Bottom-right corner · Closed panel reopens from the floating icon"
+register("ThemedMutedText", aboutLabel, "TextColor3")
+
+local ToastHolder = Instance.new("Frame")
+ToastHolder.Name = "ToastHolder"
+ToastHolder.Parent = ScreenGui
+ToastHolder.BackgroundTransparency = 1
+ToastHolder.AnchorPoint = Vector2.new(0.5, 1)
+ToastHolder.Position = UDim2.new(0.5, 0, 1, -20)
+ToastHolder.Size = UDim2.new(0, 300, 0, 240)
+local toastLayout = Instance.new("UIListLayout")
+toastLayout.Parent = ToastHolder
+toastLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+toastLayout.Padding = UDim.new(0, 6)
+
+local function notify(text, kind)
+    local theme = Themes[State.ThemeName]
+    local existing = ToastHolder:GetChildren()
+    local count = 0
+    for _, c in ipairs(existing) do
+        if c:IsA("Frame") then count = count + 1 end
+    end
+    if count >= 5 then
+        for _, c in ipairs(existing) do
+            if c:IsA("Frame") then
+                c:Destroy()
+                break
+            end
+        end
+    end
+
+    local toast = Instance.new("Frame")
+    toast.Parent = ToastHolder
+    toast.BackgroundColor3 = theme.Panel
+    toast.Size = UDim2.new(1, 0, 0, 36)
+    toast.BackgroundTransparency = 1
+    corner(toast, 8)
+    stroke(toast, kind == "warn" and theme.Warn or theme.Accent, 1, 0.4)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Parent = toast
+    lbl.BackgroundTransparency = 1
+    lbl.Size = UDim2.new(1, -16, 1, 0)
+    lbl.Position = UDim2.new(0, 8, 0, 0)
+    lbl.Font = Enum.Font.GothamMedium
+    lbl.Text = text
+    lbl.TextColor3 = theme.TextPrimary
+    lbl.TextSize = 12
+    lbl.TextTransparency = 1
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    smartText(lbl, 8)
+
+    tween(toast, {BackgroundTransparency = 0.1}, 0.2)
+    tween(lbl, {TextTransparency = 0}, 0.2)
+    task.delay(2.5, function()
+        tween(toast, {BackgroundTransparency = 1}, 0.3)
+        tween(lbl, {TextTransparency = 1}, 0.3)
+        task.wait(0.3)
+        toast:Destroy()
+    end)
+end
+
+local currentPage = nil
+local function selectTab(name)
+    if currentPage == name then return end
+    currentPage = name
+    playSound(UiSwooshSoundId, 0.25)
+    local theme = Themes[State.ThemeName]
+    for tabName, data in pairs(tabButtons) do
+        local active = tabName == name
+        data.titleLbl.TextColor3 = active and theme.TextPrimary or theme.TextMuted
+        local indicator = data.button:FindFirstChild("Indicator")
+        tween(indicator, {BackgroundTransparency = active and 0 or 1}, 0.15)
+        tween(data.button, {BackgroundTransparency = active and 0.9 or 1}, 0.15)
+    end
+    for pageName, frame in pairs(pageFrames) do
+        if pageName == name then
+            frame.Visible = true
+            frame.Position = UDim2.new(0, 12, 0, 0)
+            tween(frame, {Position = UDim2.new(0, 0, 0, 0)}, 0.3, Enum.EasingStyle.Back)
+        else
+            frame.Visible = false
+        end
+    end
+end
+
+for name, data in pairs(tabButtons) do
+    data.button.MouseButton1Click:Connect(function() selectTab(name) end)
+    data.button.MouseEnter:Connect(function()
+        if currentPage ~= name then
+            tween(data.button, {BackgroundTransparency = 0.94}, 0.15)
+        end
+        playSound(UiHoverSoundId, 0.12)
+    end)
+    data.button.MouseLeave:Connect(function()
+        if currentPage ~= name then
+            tween(data.button, {BackgroundTransparency = 1}, 0.15)
+        end
+    end)
+end
+
+function applyTheme(name)
+    local theme = Themes[name]
+    if not theme then return end
+    State.ThemeName = name
+    for _, entry in ipairs(Registry.ThemedBackground) do
+        tween(entry[1], {[entry[2]] = theme.Background}, 0.2)
+    end
+    for _, entry in ipairs(Registry.ThemedPanel) do
+        tween(entry[1], {[entry[2]] = theme.Panel}, 0.2)
+    end
+    for _, entry in ipairs(Registry.ThemedCard) do
+        tween(entry[1], {[entry[2]] = theme.Card}, 0.2)
+    end
+    for _, entry in ipairs(Registry.ThemedSidebar) do
+        tween(entry[1], {[entry[2]] = theme.Sidebar}, 0.2)
+    end
+    for _, entry in ipairs(Registry.ThemedMutedText) do
+        entry[1][entry[2]] = theme.TextMuted
+    end
+    for _, entry in ipairs(Registry.ThemedPrimaryText) do
+        entry[1][entry[2]] = theme.TextPrimary
+    end
+    for _, entry in ipairs(Registry.ThemedAccentText) do
+        entry[1][entry[2]] = theme.Accent
+    end
+    GlowStroke.Color = Color3.fromRGB(255, 145, 0)
+    HealthValue.TextColor3 = theme.Good
+    PingValue.TextColor3 = theme.Good
+    for tabName, data in pairs(tabButtons) do
+        if tabName == currentPage then
+            data.titleLbl.TextColor3 = theme.TextPrimary
+        end
+    end
+end
+
+-- normalSize stores the last "normal" (non-compact) dimensions
+local normalSize = MainFrame.Size
+local expandedSize = MainFrame.Size
+
+-- setCompactMode: toggles compact layout while preserving normalSize
+function setCompactMode(v)
+    State.CompactMode = v
+
+    if v then
+        local target = UDim2.new(
+            0,
+            normalSize.X.Offset,
+            0,
+            260
+        )
+
+        tween(MainFrame, {
+            Size = target
+        }, 0.25)
+
+        Sidebar.Size = UDim2.new(
+            0,
+            64,
+            1,
+            -58
+        )
+
+        Sidebar.Position = UDim2.new(
+            0,
+            0,
+            0,
+            58
+        )
+
+        Content.Position = UDim2.new(
+            0,
+            74,
+            0,
+            68
+        )
+
+        Content.Size = UDim2.new(
+            1,
+            -90,
+            1,
+            -78
+        )
+
+        expandedSize = target
+
+    else
+        local target = normalSize
+
+        tween(MainFrame, {
+            Size = target
+        }, 0.25)
+
+        Sidebar.Size = UDim2.new(
+            0,
+            168,
+            1,
+            -58
+        )
+
+        Sidebar.Position = UDim2.new(
+            0,
+            0,
+            0,
+            58
+        )
+
+        Content.Position = UDim2.new(
+            0,
+            178,
+            0,
+            68
+        )
+
+        Content.Size = UDim2.new(
+            1,
+            -194,
+            1,
+            -78
+        )
+
+        expandedSize = target
+    end
+
+    updateResponsiveScale()
+end
+
+applyTheme(State.ThemeName)
+selectTab("Overview")
+
+local function setVisible(state)
+    State.Visible = state
+    if state then
+        MainFrame.Visible = true
+        ReopenBubble.Visible = false
+        tween(MainFrame, {Size = expandedSize}, 0.2)
+    else
+        ReopenBubble.Visible = true
+        tween(MainFrame, {Size = UDim2.new(expandedSize.X.Scale, expandedSize.X.Offset, 0, 0)}, 0.2)
+        task.delay(0.2, function()
+            if not State.Visible then MainFrame.Visible = false end
+        end)
+    end
+end
+
+CloseButton.MouseButton1Click:Connect(function()
+    playSound(UiClickSoundId, 0.3)
+    setVisible(false)
+    notify("ErrorWalker404virus minimized — tap the floating icon to restore")
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+    if processed then return end
+    if input.KeyCode == Enum.KeyCode.RightControl then
+        setVisible(not State.Visible)
+    end
+end)
+
+do
+    local dragging, dragStart, startPos, moved = false, nil, nil, false
+    ReopenBubble.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            moved = false
+            dragStart = input.Position
+            startPos = ReopenBubble.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                    if not moved then
+                        playSound(UiClickSoundId, 0.3)
+                        setVisible(true)
+                    end
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            if delta.Magnitude > 6 then
+                moved = true
+            end
+            ReopenBubble.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+end
+
+do
+    local dragging, dragStart, startPos = false, nil, nil
+    HeaderBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = MainFrame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            MainFrame.Position = UDim2.new(
+                startPos.X.Scale, startPos.X.Offset + delta.X,
+                startPos.Y.Scale, startPos.Y.Offset + delta.Y
+            )
+            clampMainFramePosition()
+        end
+    end)
+end
+
+local ResponsiveScale = Instance.new("UIScale")
+ResponsiveScale.Parent = MainFrame
+
+local BaseWidth, BaseHeight = 680, 440
+local MinScale = 0.35
+
+local function getViewportBounds()
+    local camera = workspace.CurrentCamera
+    if not camera then
+        return Vector2.new(0, 0)
+    end
+    return camera.ViewportSize
+end
+
+local function computeResponsiveScale()
+    local viewport = getViewportBounds()
+    if viewport.X <= 0 or viewport.Y <= 0 then
+        return 1
+    end
+    local scale = math.min(viewport.X / BaseWidth, viewport.Y / BaseHeight)
+    return math.clamp(scale, MinScale, 1)
+end
+
+local function clampMainFramePosition()
+    local viewport = getViewportBounds()
+    if viewport.X <= 0 or viewport.Y <= 0 then return end
+
+    local scale = math.max(ResponsiveScale.Scale, 0.01)
+    local halfW = MainFrame.Size.X.Offset * scale * 0.5
+    local halfH = MainFrame.Size.Y.Offset * scale * 0.5
+    local margin = 6
+
+    local minX = -viewport.X * 0.5 + halfW + margin
+    local maxX = viewport.X * 0.5 - halfW - margin
+    local minY = -viewport.Y * 0.5 + halfH + margin
+    local maxY = viewport.Y * 0.5 - halfH - margin
+
+    local x = MainFrame.Position.X.Offset
+    local y = MainFrame.Position.Y.Offset
+
+    if minX > maxX then
+        x = 0
+    else
+        x = math.clamp(x, minX, maxX)
+    end
+
+    if minY > maxY then
+        y = 0
+    else
+        y = math.clamp(y, minY, maxY)
+    end
+
+    MainFrame.Position = UDim2.new(0.5, x, 0.5, y)
+end
+
+local function adaptLayoutForViewport(scale)
+    for _, holder in ipairs(Registry.Columns) do
+        local layout = nil
+        for _, c in ipairs(holder:GetChildren()) do
+            if c:IsA("UIListLayout") then
+                layout = c
+                break
+            end
+        end
+        if layout then
+            if scale < 0.65 then
+                layout.FillDirection = Enum.FillDirection.Vertical
+                layout.Padding = UDim.new(0, 8)
+                for _, child in ipairs(holder:GetChildren()) do
+                    if child:IsA("ScrollingFrame") then
+                        child.Size = UDim2.new(1, 0, 0, 0)
+                        child.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                        child.ScrollBarThickness = 3
+                        child.CanvasSize = UDim2.new(0, 0, 0, 0)
+                    end
+                end
+            else
+                layout.FillDirection = Enum.FillDirection.Horizontal
+                layout.Padding = UDim.new(0, 12)
+                for _, child in ipairs(holder:GetChildren()) do
+                    if child:IsA("ScrollingFrame") then
+                        child.Size = UDim2.new(0.5, -6, 1, 0)
+                        child.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                        child.ScrollBarThickness = 3
+                        child.CanvasSize = UDim2.new(0, 0, 0, 0)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local function updateResponsiveScale()
+    local targetScale = computeResponsiveScale()
+    tween(ResponsiveScale, {Scale = targetScale}, 0.2)
+    local scaleFactor = targetScale
+    for _, data in ipairs(Registry.ScalableCorners) do
+        local c, base = data[1], data[2]
+        c.CornerRadius = UDim.new(0, math.max(1, math.floor(base * scaleFactor)))
+    end
+    for _, data in ipairs(Registry.ScalableStrokes) do
+        local s, base = data[1], data[2]
+        s.Thickness = math.max(0.5, base * scaleFactor)
+    end
+    for _, data in ipairs(Registry.ScalableTextConstraints) do
+        local constraint, baseMax, baseMin = data[1], data[2], data[3]
+        constraint.MaxTextSize = math.max(8, math.floor(baseMax * scaleFactor))
+        constraint.MinTextSize = math.max(6, math.floor(baseMin * scaleFactor))
+    end
+    adaptLayoutForViewport(scaleFactor)
+end
+
+local fittingToViewport = false
+local function fitFrameToViewport()
+    local viewport = getViewportBounds()
+    if viewport.X <= 0 or viewport.Y <= 0 then return end
+
+    local margin = 24
+    local maxW = math.max(viewport.X - margin * 2, 300)
+    local maxH = math.max(viewport.Y - margin * 2, 220)
+
+    local currentW = MainFrame.Size.X.Offset
+    local currentH = MainFrame.Size.Y.Offset
+    local newW = math.min(currentW, maxW)
+    local newH = math.min(currentH, maxH)
+
+    if newW ~= currentW or newH ~= currentH then
+        fittingToViewport = true
+        MainFrame.Size = UDim2.new(0, newW, 0, newH)
+        -- store last known good normal size
+        normalSize = MainFrame.Size
+        expandedSize = MainFrame.Size
+        fittingToViewport = false
+    end
+
+    updateResponsiveScale()
+    task.defer(clampMainFramePosition)
+end
+
+local function hookCamera(camera)
+    if not camera then return end
+    camera:GetPropertyChangedSignal("ViewportSize"):Connect(fitFrameToViewport)
+end
+
+hookCamera(workspace.CurrentCamera)
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    hookCamera(workspace.CurrentCamera)
+    fitFrameToViewport()
+end)
+
+MainFrame:GetPropertyChangedSignal("Size"):Connect(function()
+    if fittingToViewport then return end
+    updateResponsiveScale()
+    task.defer(clampMainFramePosition)
+end)
+
+fitFrameToViewport()
+
+local ResizeHandle = Instance.new("TextButton")
+ResizeHandle.Parent = MainFrame
+ResizeHandle.AnchorPoint = Vector2.new(1, 1)
+ResizeHandle.Position = UDim2.new(1, -4, 1, -4)
+ResizeHandle.Size = UDim2.new(0, 18, 0, 18)
+ResizeHandle.BackgroundTransparency = 1
+ResizeHandle.Text = "◢"
+ResizeHandle.TextColor3 = Color3.fromRGB(255, 145, 0)
+ResizeHandle.TextSize = 14
+ResizeHandle.Font = Enum.Font.GothamBold
+
+do
+    local resizing, resizeStart, startSize = false, nil, nil
+    ResizeHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch then
+            resizing = true
+            resizeStart = input.Position
+            startSize = MainFrame.Size
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    resizing = false
+                end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - resizeStart
+            local viewport = getViewportBounds()
+            local scale = math.max(ResponsiveScale.Scale, 0.01)
+            local minWidth = 300
+            local minHeight = 220
+            local maxWidth = 900
+            local maxHeight = 700
+
+            if viewport.X > 0 then
+                maxWidth = math.min(maxWidth, math.max(minWidth, math.floor((viewport.X - 24) / scale)))
+            end
+            if viewport.Y > 0 then
+                maxHeight = math.min(maxHeight, math.max(minHeight, math.floor((viewport.Y - 24) / scale)))
+            end
+
+            local newWidth = math.clamp(
+                startSize.X.Offset + delta.X,
+                minWidth,
+                maxWidth
+            )
+
+            local newHeight = math.clamp(
+                startSize.Y.Offset + delta.Y,
+                minHeight,
+                maxHeight
+            )
+
+            MainFrame.Size = UDim2.new(
+                0,
+                newWidth,
+                0,
+                newHeight
+            )
+
+            -- update normalSize (last known "normal" size after manual resize)
+            normalSize = MainFrame.Size
+            expandedSize = MainFrame.Size
+
+            updateResponsiveScale()
+            clampMainFramePosition()
+        end
+    end)
+end
+
+local frameCount, fpsAccum = 0, 0
+local pingHistoryForJitter = {}
+
+local function healthColor(pct)
+    local theme = Themes[State.ThemeName]
+    if pct > 0.5 then return theme.Good
+    elseif pct > 0.2 then return theme.Warn
+    else return theme.Bad end
+end
+
+local function pingColor(ms)
+    local theme = Themes[State.ThemeName]
+    if ms < 100 then return theme.Good
+    elseif ms < 250 then return theme.Warn
+    else return theme.Bad end
+end
+
+local humanoidStateNames = {}
+for _, e in ipairs(Enum.HumanoidStateType:GetEnumItems()) do
+    humanoidStateNames[e] = e.Name
+end
+
+RunService.Heartbeat:Connect(function(dt)
+    frameCount = frameCount + 1
+    fpsAccum = fpsAccum + dt
+    if fpsAccum >= 0.5 then
+        local fps = frameCount / fpsAccum
+        if State.ShowFps then
+            FpsValue.Text = tostring(math.floor(fps))
+        end
+        table.insert(frameTimeSamples, (fpsAccum / frameCount) * 1000)
+        table.remove(frameTimeSamples, 1)
+        updateBarGraph(FrameTimeBars, frameTimeSamples, 50)
+        frameCount, fpsAccum = 0, 0
+    end
+
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if hum then
+            HealthValue.Text = math.floor(hum.Health) .. " / " .. math.floor(hum.MaxHealth)
+            HealthValue.TextColor3 = healthColor(hum.Health / math.max(hum.MaxHealth, 1))
+            SpeedValue.Text = tostring(math.floor(hum.WalkSpeed))
+            JumpValue.Text = tostring(math.floor(hum.JumpPower))
+            local ok, stateName = pcall(function() return humanoidStateNames[hum:GetState()] end)
+            StateValue.Text = ok and stateName or "Unknown"
+        end
+        if root then
+            VelocityValue.Text = tostring(math.floor(root.AssemblyLinearVelocity.Magnitude))
+        end
+        GravityValue.Text = tostring(math.floor(workspace.Gravity))
+    end
+end)
+
+task.spawn(function()
+    while ScreenGui.Parent do
+        local ms = math.floor(LocalPlayer:GetNetworkPing() * 1000)
+        PingValue.Text = ms .. " ms"
+        PingValue.TextColor3 = pingColor(ms)
+        StatusDot.BackgroundColor3 = pingColor(ms)
+        StatusLabel.Text = ms < 250 and "Connected" or "High Latency"
+
+        table.insert(pingSamples, ms)
+        table.remove(pingSamples, 1)
+        updateBarGraph(PingBars, pingSamples, 300)
+
+        table.insert(pingHistoryForJitter, ms)
+        if #pingHistoryForJitter > 10 then
+            table.remove(pingHistoryForJitter, 1)
+        end
+        if #pingHistoryForJitter >= 4 then
+            local sum, count = 0, 0
+            for i = 2, #pingHistoryForJitter do
+                sum = sum + math.abs(pingHistoryForJitter[i] - pingHistoryForJitter[i - 1])
+                count = count + 1
+            end
+            local avgJitter = sum / math.max(count, 1)
+            if avgJitter < 15 then
+                ConnectionQualityValue.Text = "Stable"
+                ConnectionQualityValue.TextColor3 = Themes[State.ThemeName].Good
+            elseif avgJitter < 40 then
+                ConnectionQualityValue.Text = "Fluctuating"
+                ConnectionQualityValue.TextColor3 = Themes[State.ThemeName].Warn
+            else
+                ConnectionQualityValue.Text = "Unstable"
+                ConnectionQualityValue.TextColor3 = Themes[State.ThemeName].Bad
+                pushLog("Lag spike detected: " .. ms .. "ms")
+            end
+        end
+
+        local allPlayers = Players:GetPlayers()
+        PlayerCountValue.Text = #allPlayers .. " / " .. Players.MaxPlayers
+        local ageSum = 0
+        for _, plr in ipairs(allPlayers) do
+            ageSum = ageSum + plr.AccountAge
+        end
+        if #allPlayers > 0 then
+            AvgAccountAgeValue.Text = math.floor(ageSum / #allPlayers) .. " days"
+        end
+
+        SessionUptimeValue.Text = math.floor(os.clock() - State.SessionStart) .. "s"
+
+        for _, def in ipairs(memoryTags) do
+            local ok, mb = pcall(function()
+                if def.tag == nil then
+                    return Stats:GetTotalMemoryUsageMb()
+                else
+                    return Stats:GetMemoryUsageMbForTag(def.tag)
+                end
+            end)
+            if ok and memoryRows[def.label] then
+                memoryRows[def.label].Text = string.format("%.1f MB", mb)
+            end
+        end
+
+        task.wait(1)
+    end
+end)
+
+for _, obj in ipairs(MainFrame:GetDescendants()) do
+    if (obj:IsA("TextLabel") or obj:IsA("TextButton")) and not obj:FindFirstChildOfClass("UITextSizeConstraint") then
+        if obj.TextSize and obj.TextSize > 0 and obj.Text ~= "" then
+            smartText(obj, 7)
+        end
+    end
+end
+
+local LoadingOverlay = Instance.new("Frame")
+LoadingOverlay.Name = "LoadingOverlay"
+LoadingOverlay.Parent = ScreenGui
+LoadingOverlay.Size = UDim2.new(1, 0, 1, 0)
+LoadingOverlay.BackgroundColor3 = Color3.fromRGB(5, 5, 6)
+LoadingOverlay.BackgroundTransparency = 0.1
+LoadingOverlay.ZIndex = 50
+
+local LoadingCard = Instance.new("Frame")
+LoadingCard.Parent = LoadingOverlay
+LoadingCard.AnchorPoint = Vector2.new(0.5, 0.5)
+LoadingCard.Position = UDim2.new(0.5, 0, 0.5, 0)
+LoadingCard.Size = UDim2.new(0, 280, 0, 220)
+LoadingCard.BackgroundTransparency = 1
+LoadingCard.ZIndex = 51
+
+local RingHolder = Instance.new("Frame")
+RingHolder.Parent = LoadingCard
+RingHolder.AnchorPoint = Vector2.new(0.5, 0)
+RingHolder.Position = UDim2.new(0.5, 0, 0, 0)
+RingHolder.Size = UDim2.new(0, 74, 0, 74)
+RingHolder.BackgroundTransparency = 1
+RingHolder.ZIndex = 51
+corner(RingHolder, 37)
+
+local RingStroke = stroke(RingHolder, Color3.fromRGB(255, 140, 45), 4, 0)
+local RingGradient = Instance.new("UIGradient")
+RingGradient.Transparency = NumberSequence.new({
+    NumberSequenceKeypoint.new(0, 0),
+    NumberSequenceKeypoint.new(0.5, 0.15),
+    NumberSequenceKeypoint.new(0.85, 0.9),
+    NumberSequenceKeypoint.new(1, 1),
+})
+RingGradient.Parent = RingStroke
+
+local RingCore = Instance.new("Frame")
+RingCore.Parent = RingHolder
+RingCore.AnchorPoint = Vector2.new(0.5, 0.5)
+RingCore.Position = UDim2.new(0.5, 0, 0.5, 0)
+RingCore.Size = UDim2.new(0.55, 0, 0.55, 0)
+RingCore.Rotation = 45
+RingCore.BackgroundColor3 = Color3.fromRGB(255, 140, 45)
+RingCore.ZIndex = 51
+corner(RingCore, 6)
+
+local LoadingLogo = Instance.new("ImageLabel")
+LoadingLogo.Parent = RingHolder
+LoadingLogo.AnchorPoint = Vector2.new(0.5, 0.5)
+LoadingLogo.Position = UDim2.new(0.5, 0, 0.5, 0)
+LoadingLogo.Size = UDim2.new(0.72, 0, 0.72, 0)
+LoadingLogo.BackgroundTransparency = 1
+LoadingLogo.ScaleType = Enum.ScaleType.Crop
+LoadingLogo.Image = ""
+LoadingLogo.ZIndex = 52
+corner(LoadingLogo, 8)
+
+local ringSpinning = true
+task.spawn(function()
+    while ringSpinning do
+        local tw = tween(RingGradient, {Rotation = RingGradient.Rotation + 360}, 1, Enum.EasingStyle.Linear)
+        tw.Completed:Wait()
+    end
+end)
+
+local LoadingTitle = Instance.new("TextLabel")
+LoadingTitle.Parent = LoadingCard
+LoadingTitle.Position = UDim2.new(0, 0, 0, 92)
+LoadingTitle.Size = UDim2.new(1, 0, 0, 24)
+LoadingTitle.BackgroundTransparency = 1
+LoadingTitle.Font = Enum.Font.GothamBold
+LoadingTitle.Text = "ErrorWalker404virus"
+LoadingTitle.TextColor3 = Color3.fromRGB(240, 240, 240)
+LoadingTitle.TextSize = 18
+LoadingTitle.ZIndex = 51
+smartText(LoadingTitle, 10)
+
+task.spawn(function()
+    while LoadingOverlay.Parent do
+        LoadingTitle.TextColor3 = Color3.fromRGB(255, 60, 60)
+        task.wait(0.06)
+        LoadingTitle.TextColor3 = Color3.fromRGB(240, 240, 240)
+        task.wait(math.random(2, 4) / 10)
+    end
+end)
+
+local StatusLine = Instance.new("TextLabel")
+StatusLine.Parent = LoadingCard
+StatusLine.Position = UDim2.new(0, 0, 0, 122)
+StatusLine.Size = UDim2.new(1, 0, 0, 16)
+StatusLine.BackgroundTransparency = 1
+StatusLine.Font = Enum.Font.Gotham
+StatusLine.Text = "Initializing..."
+StatusLine.TextColor3 = Color3.fromRGB(160, 160, 165)
+StatusLine.TextSize = 12
+StatusLine.ZIndex = 51
+smartText(StatusLine, 8)
+
+local ProgressTrack = Instance.new("Frame")
+ProgressTrack.Parent = LoadingCard
+ProgressTrack.Position = UDim2.new(0.5, -110, 0, 156)
+ProgressTrack.AnchorPoint = Vector2.new(0, 0)
+ProgressTrack.Size = UDim2.new(0, 220, 0, 6)
+ProgressTrack.BackgroundColor3 = Color3.fromRGB(30, 30, 32)
+ProgressTrack.ZIndex = 51
+corner(ProgressTrack, 3)
+
+local ProgressFill = Instance.new("Frame")
+ProgressFill.Parent = ProgressTrack
+ProgressFill.Size = UDim2.new(0, 0, 1, 0)
+ProgressFill.BackgroundColor3 = Color3.fromRGB(255, 140, 45)
+ProgressFill.ZIndex = 52
+corner(ProgressFill, 3)
+local ProgressGradient = Instance.new("UIGradient")
+ProgressGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 140, 45)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 190, 90)),
+})
+ProgressGradient.Parent = ProgressFill
+
+local PercentLabel = Instance.new("TextLabel")
+PercentLabel.Parent = LoadingCard
+PercentLabel.Position = UDim2.new(0, 0, 0, 172)
+PercentLabel.Size = UDim2.new(1, 0, 0, 16)
+PercentLabel.BackgroundTransparency = 1
+PercentLabel.Font = Enum.Font.GothamBold
+PercentLabel.Text = "0%"
+PercentLabel.TextColor3 = Color3.fromRGB(200, 200, 205)
+PercentLabel.TextSize = 12
+PercentLabel.ZIndex = 51
+
+local bootPhrases = {
+    "Initializing...",
+    "Linking client session...",
+    "Reading telemetry channels...",
+    "Compiling interface...",
+    "Verifying read-only hooks...",
+    "Almost there...",
+}
+
+-- Load logo into loading ring if possible, fallback to URL
+task.spawn(function()
+    local canCache = writefile and isfile and getcustomasset
+    local loaded = false
+    local finalImage = nil
+    if canCache then
+        local ok = pcall(function()
+            local imageData = game:HttpGet(logoUrl)
+            writefile("dashboard_logo_cache.png", imageData)
+            finalImage = getcustomasset("dashboard_logo_cache.png")
+        end)
+        loaded = ok and finalImage ~= nil
+        if not loaded then
+            local httpGet = (syn and syn.request) or http_request or request
+            if httpGet then
+                local ok2, response = pcall(httpGet, {Url = logoUrl, Method = "GET"})
+                if ok2 and response and response.Body then
+                    local ok3 = pcall(function()
+                        writefile("dashboard_logo_cache.png", response.Body)
+                        finalImage = getcustomasset("dashboard_logo_cache.png")
+                    end)
+                    loaded = ok3 and finalImage ~= nil
+                end
+            end
+        end
+    end
+    if loaded and finalImage then
+        LogoImage.Image = finalImage
+        ReopenBubble.Image = finalImage
+        LoadingLogo.Image = finalImage
+        LogoFallback.Visible = false
+        ReopenFallback.Visible = false
+    else
+        LoadingLogo.Image = logoUrl
+    end
+end)
+
+-- Simulate boot progress (longer so image can fetch)
+task.spawn(function()
+    local duration = 10 -- extended to give time for image download
+    local startTime = os.clock()
+    local phraseIndex = 1
+    while true do
+        local elapsed = os.clock() - startTime
+        local pct = math.clamp(elapsed / duration, 0, 1)
+        ProgressFill.Size = UDim2.new(pct, 0, 1, 0)
+        PercentLabel.Text = math.floor(pct * 100) .. "%"
+
+        local targetPhrase = math.min(math.floor(pct * #bootPhrases) + 1, #bootPhrases)
+        if targetPhrase ~= phraseIndex then
+            phraseIndex = targetPhrase
+            StatusLine.Text = bootPhrases[phraseIndex]
+        end
+
+        if pct >= 1 then
+            break
+        end
+        task.wait(0.03)
+    end
+
+    StatusLine.Text = "Ready."
+    task.wait(0.35)
+    ringSpinning = false
+
+    local fadeTween = tween(LoadingOverlay, {BackgroundTransparency = 1}, 0.35)
+    for _, obj in ipairs(LoadingCard:GetDescendants()) do
+        if obj:IsA("TextLabel") then
+            tween(obj, {TextTransparency = 1}, 0.3)
+        elseif obj:IsA("Frame") or obj:IsA("UIStroke") then
+            pcall(function() tween(obj, {BackgroundTransparency = 1}, 0.3) end)
+            pcall(function() tween(obj, {Transparency = 1}, 0.3) end)
+        end
+    end
+    fadeTween.Completed:Wait()
+    LoadingOverlay:Destroy()
+
+    -- animate main frame from zero to expandedSize
+    MainFrame.Size = UDim2.new(0, 0, 0, 0)
+    MainFrame.Visible = true
+    tween(MainFrame, {Size = expandedSize}, 0.4, Enum.EasingStyle.Back)
+
+    pushLog("ErrorWalker404virus initialized")
+    notify("ErrorWalker404virus Online")
+end)
